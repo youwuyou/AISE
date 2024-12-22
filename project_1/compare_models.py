@@ -2,28 +2,43 @@ from pathlib import Path
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import json  # Add this import
 
 from neuralop.models import FNO as LibraryFNO
 from custom_fno_1d import FNO1d
-from visualization import plot_trajectory_grid, plot_resolution_comparison, plot_l2_error_by_resolution
+from visualization import plot_combined_training_history, plot_training_history, plot_trajectory_grid, plot_resolution_comparison, plot_l2_error_by_resolution
 
-def load_model(checkpoint_path: str, model_type: str) -> torch.nn.Module:
-    """Load a model from checkpoint."""
-    if model_type == 'custom':
-        # model = FNO1d(modes=10, width=128, depth=1, use_norm=False)
-        # model = FNO1d(modes=16, width=64, depth=4, use_norm=False)
-        model = FNO1d(modes=25, width=64, depth=2, use_norm=False)
-
-    else:  # library
-        model = LibraryFNO(n_modes=(32, 1),
-                          hidden_channels=64,
-                          in_channels=2,
-                          out_channels=1,
-                          spatial_dim=2)
+def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
+    """
+    Load a model from checkpoint directory.
     
-    # Load checkpoint
-    checkpoint = torch.load(checkpoint_path, weights_only=True)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    Args:
+        checkpoint_dir (str): Directory containing model files
+        model_type (str): Type of model ('custom' or 'library')
+    
+    Returns:
+        torch.nn.Module: Loaded model in eval mode
+    """
+    checkpoint_dir = Path(checkpoint_dir)
+    
+    # Load configuration
+    with open(checkpoint_dir / 'training_config.json', 'r') as f:
+        config_dict = json.load(f)
+    
+    model_config = config_dict['model_config']
+    
+    # Initialize model based on type
+    if model_type == 'custom':
+        # Remove model_type if it exists in model_config
+        model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
+        model = FNO1d(**model_args)
+    else:  # library
+        # Remove model_type if it exists in model_config
+        model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
+        model = LibraryFNO(**model_args)
+    
+    # Load weights
+    model.load_state_dict(torch.load(checkpoint_dir / 'best_model.pth'))
     model.eval()
     return model
 
@@ -101,15 +116,37 @@ def main():
     res_dir = Path('results')
     res_dir.mkdir(exist_ok=True)
     
-    # Load models
+    # Find latest experiment directories
+    custom_experiments = sorted(Path('checkpoints/custom_fno').glob('fno_*'))
+    library_experiments = sorted(Path('checkpoints/library_fno').glob('fno_*'))
+    
+    if not custom_experiments or not library_experiments:
+        raise ValueError("No experiment directories found. Please run training first.")
+    
+    # Load models using latest experiments
     models = {
-        'Custom FNO': load_model('checkpoints/custom_fno/best_model.pth', 'custom'),
-        'Library FNO': load_model('checkpoints/library_fno/best_model.pth', 'library')
+        'Custom FNO': load_model(custom_experiments[-1], 'custom'),
+        'Library FNO': load_model(library_experiments[-1], 'library')
     }
     
-    print("\033[1mTask 1: Evaluating FNO models from one-to-one training on standard test set...\033[0m")    
-    results, test_data = evaluate_models(models, "data/test_sol.npy")
+    print(f"Loading Custom FNO from: {custom_experiments[-1]}")
+    print(f"Loading Library FNO from: {library_experiments[-1]}")
     
+    print("\033[1mTask 1: Evaluating FNO models from one-to-one training on standard test set...\033[0m")    
+
+    # Add training history plots
+    print("Plotting training histories...")
+    for exp_dir in [custom_experiments[-1], library_experiments[-1]]:
+        plot_training_history(exp_dir, save_dir=res_dir)
+
+    # Add combined training history plot
+    plot_combined_training_history(
+        custom_experiments[-1],
+        library_experiments[-1],
+        save_dir=res_dir
+    )
+
+    results, test_data = evaluate_models(models, "data/test_sol.npy")
     print(f"\nAverage Relative L2 Error Over {test_data[0].shape[0]} Testing Trajectories (resolution {test_data[0].shape[1]}):")
     print("-" * 50)
     for name, result in results.items():
@@ -169,7 +206,7 @@ def main():
     
     # Add the new L2 error resolution plot
     fig_l2 = plot_l2_error_by_resolution(
-        resolution_results, 
+        resolution_results,
         resolutions,
         title="Test Error Across Resolutions"
     )

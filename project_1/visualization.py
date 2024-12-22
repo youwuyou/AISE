@@ -1,9 +1,121 @@
 # visualization.py
-
+from pathlib import Path
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from typing import Dict, List, Tuple
+
+
+def plot_training_history(experiment_dir, save_dir=None):
+    """
+    Plot training and validation loss curves from saved training history.
+    
+    Args:
+        experiment_dir (str/Path): Directory containing the experiment files
+        save_dir (str/Path, optional): Directory to save the plot
+    """
+    experiment_dir = Path(experiment_dir)
+    
+    # Load training history from config
+    with open(experiment_dir / 'training_config.json', 'r') as f:
+        config = json.load(f)
+        history = config['training_history']
+    
+    # Determine model type from directory path
+    model_name = "Custom FNO" if "custom_fno" in str(experiment_dir) else "Library FNO"
+    
+    # Create figure
+    plt.figure(figsize=(10, 6))
+    plt.plot(history['train_loss'], label='Training Loss', color='blue', alpha=0.7)
+    plt.plot(history['val_loss'], label='Validation Loss', color='red', alpha=0.7)
+    
+    # Add vertical line at best epoch
+    best_epoch = history['best_epoch']
+    plt.axvline(x=best_epoch, color='green', linestyle='--', alpha=0.5,
+                label=f'Best Model (epoch {best_epoch})')
+    
+    plt.title(f'Training History - {model_name}')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.grid(True, which='both', linestyle='--', alpha=0.4)
+    plt.legend()
+    
+    if save_dir:
+        save_dir = Path(save_dir)
+        plt.savefig(save_dir / f'training_history_{model_name.lower().replace(" ", "_")}.png',
+                   bbox_inches='tight', dpi=300)
+        plt.close()
+    else:
+        plt.show()
+
+
+def plot_combined_training_history(custom_dir, library_dir, save_dir=None):
+    """
+    Plot training and validation loss curves for both models in the same figure.
+    """
+    custom_dir, library_dir = Path(custom_dir), Path(library_dir)
+    
+    # Load training histories
+    with open(custom_dir / 'training_config.json', 'r') as f:
+        custom_history = json.load(f)['training_history']
+    
+    with open(library_dir / 'training_config.json', 'r') as f:
+        library_history = json.load(f)['training_history']
+    
+    # Create figure
+    plt.figure(figsize=(12, 7))
+    
+    # Plot Custom FNO losses - using green colors
+    plt.plot(custom_history['train_loss'], 
+            label='Custom FNO - Training', 
+            color='darkgreen', 
+            alpha=0.7)
+    plt.plot(custom_history['val_loss'], 
+            label='Custom FNO - Validation', 
+            color='lightgreen', 
+            linestyle='--', 
+            alpha=0.7)
+    
+    # Plot Library FNO losses - using purple colors
+    plt.plot(library_history['train_loss'], 
+            label='Library FNO - Training', 
+            color='darkviolet', 
+            alpha=0.7)
+    plt.plot(library_history['val_loss'], 
+            label='Library FNO - Validation', 
+            color='plum', 
+            linestyle='--', 
+            alpha=0.7)
+    
+    # Add vertical lines for best epochs
+    plt.axvline(x=custom_history['best_epoch'], 
+                color='seagreen', 
+                linestyle=':', 
+                alpha=0.5,
+                label=f'Custom Best (epoch {custom_history["best_epoch"]})')
+    plt.axvline(x=library_history['best_epoch'], 
+                color='purple', 
+                linestyle=':', 
+                alpha=0.5,
+                label=f'Library Best (epoch {library_history["best_epoch"]})')
+    
+    plt.title('Training History Comparison')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.grid(True, which='both', linestyle='--', alpha=0.4)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    if save_dir:
+        save_dir = Path(save_dir)
+        plt.savefig(save_dir / 'training_history_comparison.png',
+                   bbox_inches='tight', dpi=300)
+        plt.close()
+    else:
+        plt.show()
+
 
 def plot_trajectory_grid(input_test, output_test, model, model_type='custom', num_plots=64, grid_size=(8,8), title=None):
     """

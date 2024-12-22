@@ -1,8 +1,27 @@
+# training.py
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+import json
+from datetime import datetime
 from pathlib import Path
+from torch.utils.data import DataLoader, TensorDataset
+
+def get_experiment_name(config):
+    """Create a unique experiment name based on key parameters and timestamp"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # For library FNO
+    if 'n_modes' in config:
+        return f"fno_m{config['n_modes'][0]}_w{config['hidden_channels']}_lr{config['learning_rate']}_{timestamp}"
+    # For custom FNO
+    else:
+        return f"fno_m{config['modes']}_w{config['width']}_d{config['depth']}_lr{config['learning_rate']}_{timestamp}"
+
+def save_config(config, save_dir):
+    """Save configuration to a JSON file"""
+    with open(save_dir / 'training_config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+
 
 def prepare_data(data_path, n_train, batch_size, use_library=False):
     """
@@ -15,8 +34,10 @@ def prepare_data(data_path, n_train, batch_size, use_library=False):
         use_library (bool): If True, prepares data in library FNO format
     """
     data = torch.from_numpy(np.load(data_path)).type(torch.float32)
-    u_0_all = data[:, 0, :]  # All initial conditions
-    u_4_all = data[:, 4, :]  # All output data
+    u_0_all = data[:, 0, :]   # All initial conditions
+
+    # FIXME: it was 4 before!
+    u_T_all = data[:, -1, :]  # All output data
     
     # Create spatial grid
     x_grid = torch.linspace(0, 1, 64).float()
@@ -38,11 +59,11 @@ def prepare_data(data_path, n_train, batch_size, use_library=False):
     
     # Prepare outputs based on format
     if use_library:
-        output_function_train = u_4_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
-        output_function_test = u_4_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
+        output_function_train = u_T_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
+        output_function_test = u_T_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
     else:
-        output_function_train = u_4_all[:n_train, :].unsqueeze(-1)
-        output_function_test = u_4_all[n_train:, :].unsqueeze(-1)
+        output_function_train = u_T_all[:n_train, :].unsqueeze(-1)
+        output_function_test = u_T_all[n_train:, :].unsqueeze(-1)
     
     # Create DataLoaders
     training_set = DataLoader(TensorDataset(input_function_train, output_function_train), 
@@ -52,18 +73,21 @@ def prepare_data(data_path, n_train, batch_size, use_library=False):
     
     return training_set, testing_set, (input_function_test, output_function_test)
 
-def train_model(model, training_set, testing_set, config, checkpoint_dir, experiment_name=None):
+def train_model(model, training_set, testing_set, config, checkpoint_dir):
     """
-    Unified training function that works with both custom and library FNO models.
+    Model-agnostic training function.
     
     Args:
-        model: The model to train (either custom FNO or library FNO)
+        model: The model to train
         training_set: DataLoader for training data
         testing_set: DataLoader for testing data
-        config (dict): Training configuration parameters
-        checkpoint_dir (str): Directory to save checkpoints
-        experiment_name (str, optional): Name for the experiment, used in checkpoint path
-    """
+        config: Training configuration parameters
+        checkpoint_dir (str/Path): Directory to save checkpoints
+    """    
+    # Create checkpoint directory if it doesn't exist
+    checkpoint_dir = Path(checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
     optimizer = torch.optim.AdamW(model.parameters(), 
                                 lr=config['learning_rate'], 
                                 weight_decay=1e-4)
@@ -75,13 +99,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, experi
     best_val_loss = float('inf')
     epochs_without_improvement = 0
     criterion = torch.nn.MSELoss()
-    
-    # Create checkpoint directory with experiment name if provided
-    checkpoint_dir = Path(checkpoint_dir)
-    if experiment_name:
-        checkpoint_dir = checkpoint_dir / experiment_name
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    
+        
     training_history = {
         'train_loss': [],
         'val_loss': [],
@@ -120,23 +138,28 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, experi
         training_history['train_loss'].append(train_mse)
         training_history['val_loss'].append(val_loss)
         
-        # Save best model
+        # Save best model and update history
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             training_history['best_val_loss'] = val_loss
             training_history['best_epoch'] = epoch
             epochs_without_improvement = 0
             
-            checkpoint = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': val_loss,
-                'train_loss': train_mse,
-                'config': config,
-                'training_history': training_history
-            }
-            torch.save(checkpoint, checkpoint_dir / 'best_model.pth')
+            # Save model weights
+            torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
+            
+            # Save training history to training_config.json
+            try:
+                with open(checkpoint_dir / 'training_config.json', 'r') as f:
+                    full_config = json.load(f)
+            except FileNotFoundError:
+                full_config = {'training_config': config}
+            
+            full_config['training_history'] = training_history
+            
+            with open(checkpoint_dir / 'training_config.json', 'w') as f:
+                json.dump(full_config, f, indent=4)
+                
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= config['patience']:

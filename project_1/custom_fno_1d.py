@@ -5,7 +5,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim import Adam
 import numpy as np
 from pathlib import Path
-from training import prepare_data, train_model
+from training import train_model, get_experiment_name, save_config, prepare_data
+
+
+
 
 class SpectralConv1d(nn.Module):
     """The FNO1d uses SpectralConv1d as its crucial part."""
@@ -100,93 +103,87 @@ class FNO1d(nn.Module):
         x = self.output_layer(x)
         return x
 
+"""
+The best performing configurations achieved error rates around 6-7%, with the optimal settings being:
+
+Modes: 25 (6.07% error) with depth=2
+Batch size: 5 (7.27% error), better than 2 (8.60%) or 8 (17.51%)
+Depth: 2 appears optimal for most configurations, with depth=1 giving 7.43% and depth=10 leading to worse performance (14.92%)
+Width: Both 64 and 128 performed similarly (around 9%)
+Step size: 100 performed best (8.57%), with larger values (250, 500) increasing error to 11.18%
+Gamma: 0.1 was used consistently
+
+The most sensitive parameters appear to be:
+
+Number of modes (ranging from 6.07% to 9.47% error)
+Depth (ranging from 6.83% to 14.92% error)
+Batch size (ranging from 7.27% to 17.51% error)
+
+The final configuration shown uses these insights with modes=25, depth=2, and batch_size=5, which aligns with the better performing settings discovered during testing.
+"""
 
 def main():
     # Set random seeds
     torch.manual_seed(0)
     np.random.seed(0)
     
-    # Configuration
-    # 9.47%
-    # config = {
-    #     'n_train': 64,
-    #     # 'batch_size': 5, => 7.27%
-    #     # 'batch_size': 2, => 8.60%
-    #     # 'batch_size': 8, => 17.51%
-    #     'batch_size': 5,
-
-    #     # 'modes': 32,
-    #     'modes': 10,
-
-    #     # 'width': 64,
-    #     # 'width': 128, => 9.28% 
-    #     'width': 128,
-    #     # 'depth': 2, => 9.12%
-    #     'depth': 1, # => 7.43%
-    #     # 'depth': 10, => 14.92%
-    #     'learning_rate': 0.001,
-    #     'epochs': 500,
-    #     # 'step_size': 50, => 9.14%
-    #     # 'step_size': 100, => 8.57%
-    #     'step_size': 100,
-    #     # 'step_size': 250, => 11.18%
-    #     # 'step_size': 500, => 11.18%
-
-    #     # 'gamma': 0.5,
-    #     # 'gamma': 0.1, => 9.47% 
-    #     'gamma': 0.1,
-
-    #     'patience': 50,
-    #     'freq_print': 1
-    # }
-
-    # Modes - 16
-    # depth 4: 10.32%
-    # depth 3: 8.76%
-    # depth 2: 6.83%
-    # depth 1: 8.93%
-
-    # Modes - 17
-    # depth 2: 6.40%
-
-    # Modes - 18
-    # depth 2: 6.65%
-
-    # Modes - 19
-    # depth 2: 6.2%
-
-    # Modes - 25
-    # depth 2: 6.07%
-
-    # Modes - 35
-    # depth 2: 6.91%
-    config = {
-        'n_train': 64,
-        'batch_size': 5,
+    # Model configuration
+    model_config = {
         'modes': 25,
         'width': 64,
-        'depth': 2, # => 7.43%
+        'depth': 2,
+        'use_norm': False,
+        'model_type': 'custom'  # Add model type identifier
+    }
+    
+    # Training configuration
+    training_config = {
+        'n_train': 64,
+        'batch_size': 5,
         'learning_rate': 0.001,
         'epochs': 500,
         'step_size': 100,
         'gamma': 0.1,
         'patience': 50,
         'freq_print': 1
-    }    
+    }
     
-    # Prepare data
-    training_set, testing_set, test_data = prepare_data("data/train_sol.npy", 
-                                                      config['n_train'], 
-                                                      config['batch_size'])
+    # Combine configurations for experiment naming
+    naming_config = {**model_config, 'learning_rate': training_config['learning_rate']}
+    
+    # Create experiment directory
+    experiment_name = get_experiment_name(naming_config)
+    checkpoint_dir = Path("checkpoints/custom_fno") / experiment_name
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save full configuration
+    config = {
+        'model_config': model_config,
+        'training_config': training_config
+    }
+    save_config(config, checkpoint_dir)
+    
+    # Prepare data (note: custom FNO doesn't use library=True flag)
+    training_set, testing_set, test_data = prepare_data(
+        "data/train_sol.npy",
+        training_config['n_train'],
+        training_config['batch_size']
+    )
     
     # Initialize model
-    model = FNO1d(modes=config['modes'], width=config['width'], depth=config['depth'], use_norm=False)
+    model = FNO1d(**{k: v for k, v in model_config.items() if k != 'model_type'})
     
     # Train model
-    trained_model = train_model(model, training_set, testing_set, config, 
-                              "checkpoints/custom_fno")
+    trained_model, training_history = train_model(
+        model=model,
+        training_set=training_set,
+        testing_set=testing_set,
+        config=training_config,
+        checkpoint_dir=checkpoint_dir
+    )
     
-    print("Training completed. Model saved in checkpoints/custom_fno/best_model.pth")
+    print(f"Training completed. Model saved in {checkpoint_dir}")
+    print(f"Best validation loss: {training_history['best_val_loss']:.6f} at epoch {training_history['best_epoch']}")
 
 if __name__ == "__main__":
     main()
