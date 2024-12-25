@@ -54,7 +54,8 @@ def main():
     
     # Model configuration
     model_config = {
-        'n_modes': (32, 1),
+        # 'n_modes': (32, 1),
+        'n_modes': (25, 1),
         'hidden_channels': 64,
         'in_channels': 2,
         'out_channels': 1,

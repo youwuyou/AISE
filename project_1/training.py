@@ -95,7 +95,6 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
                                               step_size=config['step_size'], 
                                               gamma=config['gamma'])
-    
     best_val_loss = float('inf')
     epochs_without_improvement = 0
     criterion = torch.nn.MSELoss()

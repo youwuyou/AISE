@@ -68,8 +68,12 @@ class FNO1d(nn.Module):
             self.norm_q = nn.LayerNorm(self.width)
         
         self.output_layer = nn.Linear(self.width, 1)
+
+        # TODO: now trying out identity as activation function
         self.activation = nn.Softplus()
-    
+        # self.activation = nn.SELU() # worse than Softplus
+
+
     def _make_fourier_layer(self):
         return nn.ModuleList([
             SpectralConv1d(self.width, self.width, self.modes1),
@@ -129,7 +133,10 @@ def main():
     
     # Model configuration
     model_config = {
-        'modes': 25,
+        'modes': 25, # 5.88% resolution 64, 9.68% resolution 32
+        # 'modes': 20, # 7.08% resolution 64, 9.98% resolution 32
+        # 'modes': 15, # 6.45% resolution 64, 9.40% resolution 32
+        # 'modes': 10, # 9.04% resolution 64, 10.82% resolution 32
         'width': 64,
         'depth': 2,
         'use_norm': False,

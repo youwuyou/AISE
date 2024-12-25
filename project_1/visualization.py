@@ -1,36 +1,26 @@
-# visualization.py
 from pathlib import Path
 import json
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from scipy import stats
 
-
-def plot_training_history(experiment_dir, save_dir=None):
-    """
-    Plot training and validation loss curves from saved training history.
-    
-    Args:
-        experiment_dir (str/Path): Directory containing the experiment files
-        save_dir (str/Path, optional): Directory to save the plot
-    """
+def plot_training_history(experiment_dir: Path, save_dir: Optional[Path] = None) -> None:
     experiment_dir = Path(experiment_dir)
+    save_dir = Path(save_dir) if save_dir else experiment_dir
+    save_dir.mkdir(exist_ok=True)
     
-    # Load training history from config
     with open(experiment_dir / 'training_config.json', 'r') as f:
         config = json.load(f)
         history = config['training_history']
     
-    # Determine model type from directory path
     model_name = "Custom FNO" if "custom_fno" in str(experiment_dir) else "Library FNO"
     
-    # Create figure
     plt.figure(figsize=(10, 6))
     plt.plot(history['train_loss'], label='Training Loss', color='blue', alpha=0.7)
     plt.plot(history['val_loss'], label='Validation Loss', color='red', alpha=0.7)
     
-    # Add vertical line at best epoch
     best_epoch = history['best_epoch']
     plt.axvline(x=best_epoch, color='green', linestyle='--', alpha=0.5,
                 label=f'Best Model (epoch {best_epoch})')
@@ -42,32 +32,23 @@ def plot_training_history(experiment_dir, save_dir=None):
     plt.grid(True, which='both', linestyle='--', alpha=0.4)
     plt.legend()
     
-    if save_dir:
-        save_dir = Path(save_dir)
-        plt.savefig(save_dir / f'training_history_{model_name.lower().replace(" ", "_")}.png',
-                   bbox_inches='tight', dpi=300)
-        plt.close()
-    else:
-        plt.show()
+    plt.savefig(save_dir / f'training_history_{model_name.lower().replace(" ", "_")}.png',
+               bbox_inches='tight', dpi=300)
+    plt.close()
 
-
-def plot_combined_training_history(custom_dir, library_dir, save_dir=None):
-    """
-    Plot training and validation loss curves for both models in the same figure.
-    """
+def plot_combined_training_history(custom_dir: Path, library_dir: Path, save_dir: Optional[Path] = None) -> None:
     custom_dir, library_dir = Path(custom_dir), Path(library_dir)
+    save_dir = Path(save_dir) if save_dir else custom_dir.parent
+    save_dir.mkdir(exist_ok=True)
     
-    # Load training histories
     with open(custom_dir / 'training_config.json', 'r') as f:
         custom_history = json.load(f)['training_history']
     
     with open(library_dir / 'training_config.json', 'r') as f:
         library_history = json.load(f)['training_history']
     
-    # Create figure
     plt.figure(figsize=(12, 7))
     
-    # Plot Custom FNO losses - using green colors
     plt.plot(custom_history['train_loss'], 
             label='Custom FNO - Training', 
             color='darkgreen', 
@@ -78,7 +59,6 @@ def plot_combined_training_history(custom_dir, library_dir, save_dir=None):
             linestyle='--', 
             alpha=0.7)
     
-    # Plot Library FNO losses - using purple colors
     plt.plot(library_history['train_loss'], 
             label='Library FNO - Training', 
             color='darkviolet', 
@@ -89,7 +69,6 @@ def plot_combined_training_history(custom_dir, library_dir, save_dir=None):
             linestyle='--', 
             alpha=0.7)
     
-    # Add vertical lines for best epochs
     plt.axvline(x=custom_history['best_epoch'], 
                 color='seagreen', 
                 linestyle=':', 
@@ -108,67 +87,48 @@ def plot_combined_training_history(custom_dir, library_dir, save_dir=None):
     plt.grid(True, which='both', linestyle='--', alpha=0.4)
     plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
-    if save_dir:
-        save_dir = Path(save_dir)
-        plt.savefig(save_dir / 'training_history_comparison.png',
-                   bbox_inches='tight', dpi=300)
-        plt.close()
-    else:
-        plt.show()
+    plt.savefig(save_dir / 'training_history_comparison.png',
+               bbox_inches='tight', dpi=300)
+    plt.close()
 
-
-def plot_trajectory_grid(input_test, output_test, model, model_type='custom', num_plots=64, grid_size=(8,8), title=None):
-    """
-    Create a grid of trajectory plots comparing true vs predicted solutions.
-    Returns the figure object for saving.
-    """
+def plot_trajectory_grid(input_test: torch.Tensor, 
+                        output_test: torch.Tensor, 
+                        model: torch.nn.Module,
+                        individual_errors: List[float],  # Now in percentage form
+                        predictions: torch.Tensor,
+                        save_path: Path,
+                        model_type: str = 'custom',
+                        num_plots: int = 128,
+                        grid_size: tuple = (8, 16),
+                        title: Optional[str] = None) -> None:
     with torch.no_grad():
-        fig = plt.figure(figsize=(20, 22))
+        fig = plt.figure(figsize=(40, 22))
         gs = fig.add_gridspec(grid_size[0]+1, grid_size[1], height_ratios=[0.2] + [1]*grid_size[0])
         
         title_ax = fig.add_subplot(gs[0, :])
         title_ax.set_visible(False)
-        fig.suptitle(title if title else 'Wave Solutions: True vs Predicted', fontsize=20, y=0.98)
-        
-        total_l2_error = 0
+        fig.suptitle(title if title else 'Wave Solutions: True vs Predicted', fontsize=20, y=0.98, weight='bold')
         
         for idx in range(num_plots):
             i, j = idx // grid_size[1], idx % grid_size[1]
             ax = fig.add_subplot(gs[i+1, j])
             
-            # Get predictions based on model type
             if model_type == 'library':
-                # Library model: [batch, 2, spatial, 1]
-                input_n = input_test[idx:idx+1]
-                output_true_n = output_test[idx:idx+1]
-                output_pred_n = model(input_n)
-                
-                # Extract plotting data
-                x_coords = input_n[0, 1, :, 0].detach()
-                true_sol = output_true_n[0, 0, :, 0].detach()
-                pred_sol = output_pred_n[0, 0, :, 0].detach()
+                x_coords = input_test[idx, 1, :, 0].detach()
+                true_sol = output_test[idx, 0, :, 0].detach()
+                pred_sol = predictions[idx].detach()
             else:
-                # Custom model: [batch, spatial, 2]
-                input_n = input_test[idx:idx+1]
-                output_true_n = output_test[idx:idx+1]
-                output_pred_n = model(input_n)
-                
-                # Extract plotting data
-                x_coords = input_n[0, :, 1].detach()
-                true_sol = output_true_n[0].detach()
-                pred_sol = output_pred_n[0].detach()
+                x_coords = input_test[idx, :, 1].detach()
+                true_sol = output_test[idx].detach()
+                pred_sol = predictions[idx].detach()
             
-            # Calculate error on squeezed tensors
-            err = torch.norm(pred_sol - true_sol, p=2) / torch.norm(true_sol, p=2) * 100
-            total_l2_error += err.item()
-            
-            # Plot
             ax.grid(True, which="both", ls=":", alpha=0.3)
             ax.plot(x_coords, true_sol, label="True", c="#1f77b4", lw=1.5)
             ax.plot(x_coords, pred_sol, label="Predicted", c="#ff7f0e", lw=1.5, ls='--')
             
-            ax.set_title(f'Trajectory {idx+1}\nError: {err.item():.2f}%', 
-                        fontsize=10, pad=5)
+            ax.set_title(f'Trajectory {idx+1}\nError: {individual_errors[idx]:.2f}%', 
+                        fontsize=10, 
+                        pad=5)
             
             if i != grid_size[0]-1:
                 ax.set_xticks([])
@@ -178,20 +138,27 @@ def plot_trajectory_grid(input_test, output_test, model, model_type='custom', nu
             if idx == 0:
                 ax.legend(fontsize=8, loc='upper right')
         
-        avg_error = total_l2_error / num_plots
+        # Average of individual percentage errors (they are already properly computed)
+        avg_error = sum(individual_errors[:num_plots]) / num_plots
         fig.text(0.5, 0.02, f'Average Relative L2 Error: {avg_error:.2f}%', 
                 ha='center', fontsize=14)
         
         plt.tight_layout()
         plt.subplots_adjust(top=0.95, bottom=0.05)
-        return fig
+        
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
 
-def plot_resolution_comparison(models: Dict[str, torch.nn.Module], data_dict: Dict, title=None):
-    """Compare model performance across different resolutions."""
-    resolutions = [32, 64, 96, 128]
-    results = {}
+def plot_resolution_comparison(models: Dict[str, torch.nn.Module], 
+                             data_dict: Dict,
+                             results_dict: Dict,
+                             save_dir: Path,
+                             title: Optional[str] = None) -> None:
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True)
     
-    # Define a consistent color scheme and model names at the start
+    resolutions = sorted(data_dict.keys())
+    
     model_names = list(models.keys())
     colors = {
         'True': '#000000',
@@ -199,159 +166,126 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module], data_dict: Di
         'Library FNO': '#ff7f0e'
     }
     
-    # Increase figure size and adjust subplot layout
-    fig = plt.figure(figsize=(12, 4*len(resolutions)))
-    gs = fig.add_gridspec(len(resolutions), 2, height_ratios=[1]*len(resolutions), 
-                         width_ratios=[2.5, 1])  # Adjusted width ratio for better balance
-    axes = []
-    for i in range(len(resolutions)):
-        axes.append([fig.add_subplot(gs[i, 0]), fig.add_subplot(gs[i, 1])])
+    # Increase figure size and adjust spacing
+    fig = plt.figure(figsize=(20, 12))
+    gs = fig.add_gridspec(2, 2, hspace=0.4, wspace=0.3)
+    axes = [[fig.add_subplot(gs[i, j]) for j in range(2)] for i in range(2)]
     axes = np.array(axes)
     
-    fig.suptitle(title if title else 'Resolution Comparison Across Models', 
-                fontsize=16, y=0.98)
+    fig.suptitle(title if title else 'Model Prediction Across Resolutions', 
+                fontsize=16, y=0.95, weight='bold')
     
-    # Add spacing between subplots
-    plt.subplots_adjust(hspace=0.4)
+    # First pass to determine global min/max for consistent y-axis limits
+    global_min = float('inf')
+    global_max = float('-inf')
     
-    for i, res in enumerate(resolutions):
+    for res in resolutions:
+        sample_idx = 0
+        true_sol = data_dict[res]['custom'][1][sample_idx].detach()
+        global_min = min(global_min, true_sol.min().item())
+        global_max = max(global_max, true_sol.max().item())
+        
+        for name in model_names:
+            pred = results_dict[name]['predictions'][res][sample_idx].detach()
+            global_min = min(global_min, pred.min().item())
+            global_max = max(global_max, pred.max().item())
+    
+    # Add padding to y-axis limits
+    y_padding = (global_max - global_min) * 0.15
+    y_min = global_min - y_padding
+    y_max = global_max + y_padding
+    
+    for idx, res in enumerate(resolutions):
+        i, j = idx // 2, idx % 2
         sample_idx = 0
         x_grid = torch.linspace(0, 1, res)
         true_sol = data_dict[res]['custom'][1][sample_idx].detach()
         
         # Plot ground truth
-        axes[i, 0].plot(x_grid, true_sol,
+        axes[i, j].plot(x_grid, true_sol,
                        '-', color=colors['True'], 
-                       label='True Solution', 
+                       label='Ground Truth', 
                        linewidth=2, 
                        alpha=0.8)
         
-        model_errors = []
-        for name, model in models.items():
-            with torch.no_grad():
-                model_type = 'library' if 'Library' in name else 'custom'
-                input_data, output_data = data_dict[res][model_type.lower()]
-                
-                pred = model(input_data[sample_idx:sample_idx+1])
-                if model_type == 'library':
-                    pred = pred.squeeze(-1).squeeze(1)
-                else:
-                    pred = pred.squeeze(-1)
-                
-                if model_type == 'library':
-                    true_output = output_data.squeeze(-1).squeeze(1)
-                else:
-                    true_output = output_data
-                    
-                error = torch.norm(pred - true_output[sample_idx:sample_idx+1], p=2) / \
-                        torch.norm(true_output[sample_idx:sample_idx+1], p=2) * 100
-                
-                if name not in results:
-                    results[name] = {'errors': []}
-                results[name]['errors'].append(error.item())
-                
-                # Plot prediction with improved styling
-                axes[i, 0].plot(x_grid, 
-                              pred[0].detach(),
-                              '--', 
-                              color=colors[name],
-                              label=f'{name}\nError: {error:.2f}%',
-                              linewidth=1.5,
-                              alpha=0.8)
-                
-                # Adjusted marker size and alpha for better visibility
-                marker_size = max(3, 20 // (res/32))
-                marker_alpha = max(0.2, 0.6 // (res/32))
+        # Plot model predictions
+        for name in model_names:
+            error = results_dict[name]['errors'][idx]
+            pred = results_dict[name]['predictions'][res][sample_idx]
+            
+            axes[i, j].plot(x_grid, 
+                          pred.detach(),
+                          '--', 
+                          color=colors[name],
+                          label=f'{name}',
+                          linewidth=1.5,
+                          alpha=0.8)
+            
+            # Adjust marker size and alpha based on resolution
+            marker_size = max(3, 15 // (res/32))
+            marker_alpha = max(0.2, 0.5 // (res/32))
 
-                axes[i, 0].scatter(x_grid, 
-                                pred[0].detach(),
-                                marker='o' if 'Custom' in name else 's',
-                                color=colors[name],
-                                s=marker_size,
-                                alpha=marker_alpha)
-                model_errors.append(error.item())
+            axes[i, j].scatter(x_grid, 
+                             pred.detach(),
+                             marker='o' if 'Custom' in name else 's',
+                             color=colors[name],
+                             s=marker_size,
+                             alpha=marker_alpha)
         
-        # Improve left subplot styling
-        axes[i, 0].set_title(f'Resolution: {res} points', pad=10, fontsize=12)
-        axes[i, 0].grid(True, linestyle='--', alpha=0.2)
-        axes[i, 0].legend(loc='upper right', bbox_to_anchor=(1.0, 1.0))
-        axes[i, 0].set_xlabel('x', fontsize=10)
-        axes[i, 0].set_ylabel('u(x, t = 1)', fontsize=10)
-        axes[i, 0].set_ylim(min(true_sol)*1.1, max(true_sol)*1.1)
+        # Enhance subplot styling
+        axes[i, j].set_title(f'Resolution: {res} points', pad=10, fontsize=12, weight='bold')
+        axes[i, j].grid(True, linestyle='--', alpha=0.3)
+        axes[i, j].legend(loc='upper right', framealpha=0.9)
+        axes[i, j].set_xlabel('x', fontsize=10)
+        axes[i, j].set_ylabel('u(x, t = 1)', fontsize=10)
         
-        # Improve error bar plot
-        bar_colors = [colors[name] for name in model_names]
+        # Set consistent y-axis limits across all subplots
+        axes[i, j].set_ylim(y_min, y_max)
         
-        # Adjust bar width to make them thinner
-        bar_width = 0.2  # Reduced bar width
-        spacing = 0.05   # Minimal spacing between bars
+        # Set x-axis limits
+        axes[i, j].set_xlim(-0.02, 1.02)
+        
+        # Enhance grid and spines
+        axes[i, j].grid(True, which='major', linestyle='-', alpha=0.2)
+        axes[i, j].grid(True, which='minor', linestyle=':', alpha=0.1)
+        axes[i, j].minorticks_on()
+        
+        for spine in axes[i, j].spines.values():
+            spine.set_linewidth(0.8)
+            
+        # Add error percentage to title
+        error_text = ' '.join([f'{name}: {results_dict[name]["errors"][idx]:.1f}%' 
+                             for name in model_names])
+        axes[i, j].set_title(f'Resolution: {res} points\n{error_text}', 
+                           pad=10, fontsize=12, weight='bold')
 
-        # Calculate positions for centered and thinner bars
-        positions = np.arange(len(model_names)) * (bar_width + spacing)  # Spread with small spacing
-        positions = positions - (np.mean(positions) / 2)  # Center around 0
+    plt.savefig(save_dir / 'resolution_comparison.png', 
+                bbox_inches='tight', 
+                dpi=300,
+                facecolor='white',
+                edgecolor='none')
+    plt.close()
 
-        
-        bars = axes[i, 1].bar(positions, model_errors, color=bar_colors, 
-                            alpha=0.7, width=bar_width)
-
-
-
-        # Add value labels on top of bars
-        for bar in bars:
-            height = bar.get_height()
-            axes[i, 1].text(bar.get_x() + bar.get_width()/2., height,
-                          f'{height:.2f}%',
-                          ha='center', va='bottom',
-                          fontsize=9)
-        
-        # Improve right subplot styling
-        axes[i, 1].set_title(f'Model Errors at Resolution {res}', fontsize=12)
-        axes[i, 1].set_ylabel('Relative L2 Error (%)', fontsize=10)
-        axes[i, 1].grid(True, linestyle='--', alpha=0.2)
-        
-        # Fix the tick positions to match the number of labels
-        axes[i, 1].set_xticks(positions)
-        axes[i, 1].set_xticklabels(model_names, rotation=45, ha='right')
-        
-        # Set y-axis limits for error bars with some padding
-        max_error = max(model_errors) * 1.15
-        axes[i, 1].set_ylim(0, max_error)
-        
-        # Add subtle spines
-        for spine in axes[i, 1].spines.values():
-            spine.set_linewidth(0.5)
-
-    plt.tight_layout()
-    return fig, results
-
-def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], resolutions: List[int], title=None):
-    """
-    Create an enhanced line plot showing L2 error trends across different resolutions.
+def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], 
+                              resolutions: List[int],
+                              save_dir: Path,
+                              training_resolution: Optional[int] = 64,
+                              title: Optional[str] = None) -> None:
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True)
     
-    Args:
-        results: Dictionary containing model results with structure:
-                {model_name: {'errors': [error_res1, error_res2, ...]}}
-        resolutions: List of resolution values
-        title: Optional plot title
-    
-    Returns:
-        matplotlib figure object
-    """
     fig, ax = plt.subplots(figsize=(12, 7))
     
-    # Define consistent colors and styles
     colors = {
         'Custom FNO': '#1f77b4',
         'Library FNO': '#ff7f0e'
     }
     
-    # Add subtle grid with lower alpha
     ax.grid(True, linestyle='--', alpha=0.2, which='both')
     ax.set_axisbelow(True)
     
-    # Plot error trends for each model with enhanced styling
+    # Plot lines and markers for each model
     for i, (model_name, model_results) in enumerate(results.items()):
-        # Main line
         line = ax.plot(resolutions, 
                       model_results['errors'],
                       '-',
@@ -360,7 +294,6 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], reso
                       linewidth=2.5,
                       zorder=3)
         
-        # Add points with white edge
         ax.plot(resolutions,
                 model_results['errors'],
                 'o',
@@ -370,7 +303,6 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], reso
                 markeredgecolor='white',
                 zorder=4)
         
-        # Add smaller solid points
         ax.plot(resolutions,
                 model_results['errors'],
                 'o',
@@ -378,13 +310,8 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], reso
                 markersize=6,
                 zorder=5)
         
-        # Add value annotations with different offsets for last points
         for j, (x, y) in enumerate(zip(resolutions, model_results['errors'])):
-            # Determine y-offset based on position and model
-            if j == len(resolutions) - 1:  # Last points
-                y_offset = 10 if i == 0 else -20  # Different offsets for different models
-            else:
-                y_offset = 10
+            y_offset = 10 if i == 0 or j != len(resolutions) - 1 else -20
             
             bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
             ax.annotate(f'{y:.2f}%', 
@@ -397,29 +324,35 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], reso
                        bbox=bbox_props,
                        zorder=6)
     
-    # Customize plot
+    # Add vertical line at training resolution if specified
+    if training_resolution is not None:
+        ymin = min(min(r['errors']) for r in results.values())
+        ymax = max(max(r['errors']) for r in results.values())
+        padding = (ymax - ymin) * 0.1
+        y_limits = (ymin - padding * 2, ymax + padding * 3)
+        
+        ax.vlines(x=training_resolution, ymin=y_limits[0], ymax=y_limits[1], 
+                  colors='grey', linestyles='--', label='Training Resolution',
+                  linewidth=1.5, zorder=2, alpha=0.7)
+    
     ax.set_xlabel('No. Nodal Points', fontsize=12, labelpad=10)
-    ax.set_ylabel('Relative L2 Error (%)', fontsize=12, labelpad=10)
-    ax.set_title(title if title else 'L2 Error vs Resolution', 
+    ax.set_ylabel('Average Relative L2 Error (%)', fontsize=12, labelpad=10)
+    ax.set_title(title if title else 'Test Error Across Resolutions', 
                  fontsize=14, 
                  pad=20,
                  weight='bold')
     
-    # Set x-axis ticks and labels
     ax.set_xticks(resolutions)
     ax.set_xticklabels(resolutions, fontsize=10)
     
-    # Add subtle spines
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
     
-    # Adjust y-axis limits to add some padding
     ymin = min(min(r['errors']) for r in results.values())
     ymax = max(max(r['errors']) for r in results.values())
     padding = (ymax - ymin) * 0.1
-    ax.set_ylim(ymin - padding * 2, ymax + padding * 3)  # Extra padding for labels
+    ax.set_ylim(ymin - padding * 2, ymax + padding * 3)
     
-    # Enhanced legend
     legend = ax.legend(loc='upper right',
                       frameon=True,
                       framealpha=0.95,
@@ -428,5 +361,343 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]], reso
                       fontsize=10)
     legend.get_frame().set_linewidth(0.5)
     
+    plt.savefig(save_dir / 'l2_error_resolution_comparison.png', 
+                bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+def plot_error_distributions(in_dist_results, ood_results, save_path):
+   fig = plt.figure(figsize=(16, 12))
+   gs = fig.add_gridspec(2, 2, hspace=0.4)
+   
+   model_colors = {
+       'Custom FNO': '#1f77b4',
+       'Library FNO': '#ff7f0e'
+   }
+   
+   stat_styles = {
+       'mode': '--',
+       'mean': '-', 
+       'median': ':',
+   }
+   
+   # First pass to determine global axis limits
+   all_errors = []
+   max_density = 0
+   for model in ['Custom FNO', 'Library FNO']:
+       for results in [in_dist_results, ood_results]:
+           errors = np.array(results[model]['individual_errors'])
+           all_errors.extend(errors)
+           counts, _ = np.histogram(errors, bins=30, density=True)
+           max_density = max(max_density, np.max(counts))
+
+   global_xlim = (0, np.ceil(max(all_errors)))
+   global_ylim = (0, max_density * 1.2)  # Add 20% padding for labels
+   
+   # Add model labels on right side
+   plt.figtext(0.95, 0.75, 'Custom FNO', color=model_colors['Custom FNO'], rotation=270, fontsize=14, weight='bold')
+   plt.figtext(0.95, 0.25, 'Library FNO', color=model_colors['Library FNO'], rotation=270, fontsize=14, weight='bold')
+
+   # Add distribution type labels at top
+   plt.figtext(0.25, 0.95, 'In-Distribution Data', fontsize=15, weight='bold', ha='center')
+   plt.figtext(0.75, 0.95, 'Out-of-Distribution Data', fontsize=15, weight='bold', ha='center')
+
+   for model_idx, model_name in enumerate(['Custom FNO', 'Library FNO']):
+       stat_lines = []
+       stat_labels = []
+       for dist_idx, results in enumerate([in_dist_results, ood_results]):
+           ax = fig.add_subplot(gs[model_idx, dist_idx])
+           
+           errors = np.array(results[model_name]['individual_errors'])
+           plt.hist(errors, bins=30, density=True, alpha=0.5,
+                   color=model_colors[model_name],
+                   edgecolor='white', linewidth=1)
+           
+           counts, bin_edges = np.histogram(errors, bins=30, density=True)
+           bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+           
+           stats = {
+               'mode': bin_centers[np.argmax(counts)],
+               'mean': np.mean(errors),
+               'median': np.median(errors)
+           }
+           
+           for stat, style in stat_styles.items():
+               stat_value = stats[stat]
+               line = plt.axvline(stat_value, color=model_colors[model_name],
+                                linestyle=style, alpha=1.0, linewidth=2)
+               if dist_idx == 0:
+                   stat_lines.append(line)
+                   stat_labels.append(stat.capitalize())
+               
+               # Add mean value label with background
+               if stat == 'mean':
+                   label = f'Mean: {stat_value:.2f}%'
+                   bbox_props = dict(
+                       boxstyle='round,pad=0.5',
+                       fc='white',
+                       ec=model_colors[model_name],
+                       alpha=0.8
+                   )
+                   plt.text(stat_value + 0.5, global_ylim[1] * 0.8,
+                          label,
+                          color=model_colors[model_name],
+                          fontsize=12,
+                          fontweight='bold',
+                          bbox=bbox_props,
+                          horizontalalignment='left')
+           
+           plt.xlabel('Test Error (%)', fontsize=11)
+           plt.ylabel('Density', fontsize=11)
+           plt.grid(True, alpha=0.2)
+           plt.xlim(global_xlim)
+           plt.ylim(global_ylim)
+           ax.spines['top'].set_visible(False)
+           ax.spines['right'].set_visible(False)
+
+       fig.legend(stat_lines, stat_labels,
+                 title='Statistics',
+                 loc='upper right',
+                 bbox_to_anchor=(0.93, 0.93 - 0.5 * model_idx),
+                 labelcolor='#404040')
+
+   plt.subplots_adjust(right=0.9, top=0.9)
+   plt.savefig(save_path.parent / 'ood_error_distribution_comparison.png', 
+               dpi=300, bbox_inches='tight')
+   plt.close()
+
+#============== EXPERIMENTAL =================
+
+def compute_avg_spectra(model, data_loader, model_type='custom'):
+    import numpy as np
+    import torch
+    from scipy.fft import fft, fftfreq
+    
+    model.eval()
+    resolution = data_loader.dataset[0][0].shape[-1]
+    freqs = fftfreq(resolution)[:resolution//2]
+    
+    spectrum_sums = {
+        'pred': np.zeros(resolution//2),
+        'inp': np.zeros(resolution//2), 
+        'out': np.zeros(resolution//2)
+    }
+    total_samples = 0
+    
+    with torch.no_grad():
+        for inputs, outputs in data_loader:
+            batch_size = inputs.shape[0]
+            total_samples += batch_size
+            
+            # Make sure shapes are squeezed or shaped properly
+            inputs = inputs.squeeze()   # => (batch_size, resolution)
+            outputs = outputs.squeeze() # => (batch_size, resolution)
+            
+            # Build the grid
+            x_grid = torch.linspace(0, 1, resolution).float()
+            x_grid_expanded = x_grid.expand(batch_size, -1)
+            
+            if model_type == 'library':
+                model_input = torch.stack((inputs, x_grid_expanded), dim=1).unsqueeze(-1)
+                predictions = model(model_input).squeeze(-1).squeeze(1).cpu().numpy()
+            else:
+                model_input = torch.stack((inputs, x_grid_expanded), dim=-1)
+                predictions = model(model_input).squeeze(-1).cpu().numpy()
+            
+            # Compute FFT magnitudes
+            for i in range(batch_size):
+                inp_1d = inputs[i].cpu().numpy()
+                out_1d = outputs[i].cpu().numpy()
+                pred_1d = predictions[i]
+                
+                spectrum_sums['pred'] += np.abs(fft(pred_1d))[:resolution//2]
+                spectrum_sums['inp']  += np.abs(fft(inp_1d))[:resolution//2]
+                spectrum_sums['out']  += np.abs(fft(out_1d))[:resolution//2]
+    
+    # Return averaged spectra
+    return (spectrum_sums['pred'] / total_samples,
+            spectrum_sums['inp']  / total_samples,
+            spectrum_sums['out']  / total_samples)
+
+
+
+def plot_log_spectra(models, data_loader, save_path):
+   import matplotlib.pyplot as plt
+   import numpy as np
+   
+   plt.figure(figsize=(10, 6))
+   resolution = data_loader.dataset[0][0].shape[-1]
+   freqs = np.fft.fftfreq(resolution)[:resolution//2]
+   
+   spectra_data = {}
+   for name, model in models.items():
+       model_type = 'library' if 'Library' in name else 'custom'
+       avg_pred, avg_inp, avg_out = compute_avg_spectra(model, data_loader, model_type)
+       spectra_data[name] = {'pred': avg_pred, 'inp': avg_inp, 'out': avg_out}
+   
+   colors = {'Custom FNO': 'blue', 'Library FNO': 'red'}
+   for name, data in spectra_data.items():
+       color = colors.get(name, 'green')
+       plt.semilogy(freqs, data['pred'], label=f'{name} Prediction', 
+                    color=color, linestyle='-')
+   
+   # Plot ground truth (just pick any model's 'out' since it's the same data loader)
+   first_model_key = next(iter(spectra_data))
+   plt.semilogy(freqs, spectra_data[first_model_key]['out'], 
+                label='Ground Truth', color='black', linestyle='--')
+   
+   plt.grid(True, which="both", ls="-", alpha=0.2)
+   plt.xlabel('Frequency')
+   plt.ylabel('Log Power')
+   plt.title('Average Frequency Spectra')
+   plt.legend()
+   plt.tight_layout()
+   plt.savefig(save_path)
+   plt.close()
+
+def plot_log_spectra_and_error_across_resolutions(
+    models,
+    resolutions,
+    save_path,
+    batch_size=32,
+    verbose=True
+):
+    """
+    Plots:
+      1) 1D log-scale power spectra (left column),
+      2) Per-frequency relative error (right column)
+    across multiple resolutions, one row per resolution.
+
+    For each resolution, we load the dataset, compute the averaged spectra,
+    and measure frequency-wise errors. The figure will have shape (nrows, 2).
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import torch
+    
+    # Create a figure with N rows x 2 columns
+    nrows = len(resolutions)
+    fig, axs = plt.subplots(nrows, 2, figsize=(12, 4 * nrows), sharex=False)
+    # If nrows == 1, make axs 2D for consistent indexing
+    if nrows == 1:
+        axs = [axs]
+    
+    # A small helper to compute error metrics
+    def frequency_domain_error(pred_spectrum, gt_spectrum, eps=1e-12):
+        """
+        Computes a simple frequency-wise relative difference,
+        then returns (mean_diff, max_diff, rel_diff_array).
+        
+        pred_spectrum, gt_spectrum: (resolution//2,) arrays of power.
+        rel_diff_array[k] = |pred[k] - gt[k]| / (|gt[k]| + eps).
+        """
+        rel_diff = np.abs(pred_spectrum - gt_spectrum) / (np.abs(gt_spectrum) + eps)
+        return rel_diff.mean(), rel_diff.max(), rel_diff
+    
+    # Colors for the two models (change as you like)
+    colors = {
+        'Custom FNO': 'blue',
+        'Library FNO': 'red'
+    }
+    
+    # Keep track of integrated (mean) error and max error for printing
+    integrated_errors = {name: [] for name in models.keys()}
+    
+    for i, res in enumerate(resolutions):
+        # Load data for this resolution
+        data = np.load(f"data/test_sol_res_{res}.npy")
+        n_samples, _, resolution = data.shape
+        
+        # Convert to Tensors
+        u0 = torch.from_numpy(data[:, 0, :]).float()
+        uT = torch.from_numpy(data[:, -1, :]).float()
+        
+        # Create a DataLoader
+        dataset = torch.utils.data.TensorDataset(u0, uT)
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+        
+        # We'll plot each model's lines on the left subplot
+        ax_spec = axs[i][0]  # left column: log spectra
+        ax_err  = axs[i][1]  # right column: error curve
+        
+        # We only need to extract ground_truth (avg_out) once per resolution
+        ground_truth = None
+        
+        # X-axis: frequencies
+        freqs = np.fft.fftfreq(resolution)[:resolution//2]
+        
+        for name, model in models.items():
+            # Compute average spectra
+            model_type = 'library' if 'Library' in name else 'custom'
+            avg_pred, avg_inp, avg_out = compute_avg_spectra(
+                model, data_loader, model_type
+            )
+            
+            # Keep ground_truth if not already set
+            if ground_truth is None:
+                ground_truth = avg_out
+            
+            # Plot the predicted spectrum on a log scale
+            ax_spec.semilogy(
+                freqs, avg_pred,
+                label=f"{name} Prediction" if i == 0 else None,
+                color=colors.get(name, 'green'),
+                linestyle='-'
+            )
+            
+            # ---- Compute frequency-domain error ----
+            mean_diff, max_diff, rel_diff = frequency_domain_error(avg_pred, ground_truth)
+            integrated_errors[name].append((res, mean_diff, max_diff))
+            
+            # Plot the error on the right subplot (linear scale)
+            ax_err.plot(
+                freqs, rel_diff,
+                label=f"{name} Error" if i == 0 else None,
+                color=colors.get(name, 'green'),
+                linestyle='-'
+            )
+        
+        # Finally, plot the ground truth power spectrum on the left subplot
+        ax_spec.semilogy(
+            freqs, ground_truth,
+            label="Ground Truth" if i == 0 else None,
+            color='black',
+            linestyle='--'
+        )
+        
+        # Subplot titles/labels
+        ax_spec.set_title(f"Resolution: {res} (Spectra)")
+        ax_spec.set_ylabel("Log Power")
+        ax_spec.grid(True, which="both", ls="-", alpha=0.2)
+        
+        ax_err.set_title(f"Resolution: {res} (Error)")
+        ax_err.set_ylabel("Relative Error")
+        ax_err.grid(True, which="both", ls="-", alpha=0.2)
+        
+        # We'll label the x-axis on the bottom row only
+        if i == nrows - 1:
+            ax_spec.set_xlabel("Frequency")
+            ax_err.set_xlabel("Frequency")
+    
+    # Create legends (only need them on the top row)
+    # Left subplot legend: spectra
+    lines_spec, labels_spec = axs[0][0].get_legend_handles_labels()
+    # Right subplot legend: error
+    lines_err,  labels_err  = axs[0][1].get_legend_handles_labels()
+    # Place them. You can tweak the loc as you wish
+    axs[0][0].legend(lines_spec, labels_spec, loc="best")
+    axs[0][1].legend(lines_err,  labels_err,  loc="best")
+    
     plt.tight_layout()
-    return fig
+    plt.savefig(save_path)
+    plt.close()
+    
+    # Optional: Print summary in the console
+    if verbose:
+        print("\nFrequency-Domain Error Summary (Avg / Max across frequencies):")
+        print("-" * 60)
+        for name in models.keys():
+            print(f"Model: {name}")
+            for (res, mean_diff, max_diff) in integrated_errors[name]:
+                print(f"  Resolution={res}: mean_diff={mean_diff:.4f}, max_diff={max_diff:.4f}")
+            print("-" * 60)
