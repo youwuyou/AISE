@@ -1,6 +1,6 @@
 # AI in Sciences and Engineering - Final Projects
 
-This repository contains the implementation of the final projects for the AI in Sciences and Engineering course at ETH Zürich.
+This repository contains the implementation of the final projects for the course AI in Sciences and Engineering 401-4656-21L at ETH Zürich.
 
 
 ## Repository Structure
@@ -13,13 +13,13 @@ The repository consists of three main projects, we try to resolve all projects u
 
 ## Progress Overview
 
-| Task  | AI Implementation | Numerical Solver | Testing | Documentation |
-|-------------------------------|-------------------|------------------|---------|---------------|
-| 1. 1D Wave Equation (FNO) | 🚧 In Progress    | ⏳ Not Started   | ⏳  | ⏳  |
-| Bonus 1: Various Timestamps     | ⏳ Not Started    | N/A | N/A     | ⏳  |
-| 2. PDE-Find   | ⏳ Not Started    | ⏳ Not Started   | ⏳      | ⏳ |
-| 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  | ⏳  |
-| Bonus 2: Stability Analysis    | ⏳ Not Started    | N/A    | N/A     | ⏳            |
+| Task  | ML-based Implementation | Numerical Solver Implementation | Documentation |
+|-------------------------------|-------------------|------------------|---------------|
+| 1. 1D Wave Equation (FNO) | 🚧 In Progress    | N/A   | ⏳  |
+| Bonus 1: All2all Training     | ⏳ Not Started    | N/A | ⏳  |
+| 2. PDE-Find   | ⏳ Not Started    | ⏳ Not Started   | ⏳ |
+| 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  |
+| Bonus 2: Stability Analysis    | ⏳ Not Started    | N/A    | ⏳            |
 
 ### Legend:
 - ✅ Complete
@@ -30,7 +30,22 @@ The repository consists of three main projects, we try to resolve all projects u
 
 
 ## Reports and Documentation
-- Project reports are located in the `docs/` directory
-- Each report follows the 2-page limit requirement
-- Visualizations and results can be found in the `results/` directory
+
+- Original project handouts locates under the `assets/` directory
+- Each project `X ∈ {1, 2, 3}` contains:
+    - an associated report `report.pdf` located under `project_X/` folder
+    - For each task, we reported our results using maximal two pages
+    - Visualizations and results can be found in the `results/` directory
+
+
+For project reports, experiments were conducted using the hardware & software configuration as follows:
+
+
+| **CPU Model** | **CPU Core Info** | **Memory** |
+|-------------|------------------|------------|
+| Intel(R) Core(TM) i7-12700H | 20 Cores @ 4.70 GHz | 15 GB RAM + 32 GB Swap |
+| **Python** | **Deep Learning Framework** | **OS** |
+| Python 3.10.12 | PyTorch 2.5.1 | Garuda Linux x86_64 |
+
+
 
