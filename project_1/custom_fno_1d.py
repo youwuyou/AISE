@@ -107,8 +107,6 @@ class FNO1d(nn.Module):
     def forward(self, x):
         # Initial lifting layer
         x = self.fc0(x)
-        x = self.activation(x)
-        
         x = x.permute(0, 2, 1)
         
         # Apply padding
@@ -132,7 +130,6 @@ class FNO1d(nn.Module):
         # Final projection layers
         x = x.permute(0, 2, 1)
         x = self.fc1(x)
-        x = self.activation(x)
         x = self.fc2(x)
         return x  # Shape should be [batch_size, sequence_length, 1]
 
