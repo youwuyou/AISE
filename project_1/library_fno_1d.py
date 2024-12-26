@@ -19,8 +19,8 @@ def main():
     np.random.seed(0)
     
     # Model configuration
-    # checkpoints/library_fno/fno_m40_w64_lr0.001_20241226_163648
-    # 9.77% resolution 32; 7.19% resolution 64
+    # checkpoints/library_fno/fno_m30_w64_lr0.001_20241226_172707
+    # 9.53% resolution 32; 7.23% resolution 64
     model_config = {
         'n_layers': 4,
         'hidden_channels': 64,
