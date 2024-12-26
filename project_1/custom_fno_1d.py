@@ -13,12 +13,14 @@ from training import train_model, get_experiment_name, save_config, prepare_data
 
 
 class SpectralConv1d(nn.Module):
-    """The FNO1d uses SpectralConv1d as its crucial part."""
+    """
+    The FNO1d uses SpectralConv1d as its crucial part, 
+        - implements the Fourier integral operator in a layer
+            F⁻¹(R⁽ˡ⁾∘F)(u)
+        - uses FFT, linear transform, and inverse FFT, applicable to equidistant mesh 
+    """
     def __init__(self, in_channels, out_channels, modes1):
         super(SpectralConv1d, self).__init__()
-        """
-        1D Fourier layer. It does FFT, linear transform, and Inverse FFT.
-        """
         if not isinstance(modes1, int) or modes1 <= 0:
             raise ValueError(f"modes1 must be a positive integer, got {modes1}")
             
@@ -66,20 +68,19 @@ class FNO1d(nn.Module):
     def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
         """
-        The overall network. It contains 4 layers of the Fourier layer.
-        1. Lift the input to the desire channel dimension by self.fc0 .
-        2. 4 layers of the integral operators u' = (W + K)(u).
-            W defined by self.w; K defined by self.conv .
-        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+        The overall network G_θ(u). It contains [depth] layers of the Fourier layers (See `SpectralConv1d`).
+        1. Lift the input to the desired channel dimension by self.fc0
+        2. For each of the [depth] layers, apply Fourier integral operators:
+        3. Project from the channel space to the output space by self.fc1 and self.fc2
 
         input: the solution of the initial condition and location (a(x), x)
         input shape: (batchsize, x=s, c=2)
         output: the solution of a later timestep
         output shape: (batchsize, x=s, c=1)
         """
-        self.modes = modes      # Number of Fourier modes to keep
-        self.width = width      # Number of lifting dimension
-        self.depth = depth      # Number of Fourier layers
+        self.modes = modes                # Number of Fourier modes to keep
+        self.width = width                # Number of lifting dimension
+        self.depth = depth                # Number of Fourier layers
         self.padding_frac = padding_frac  # Padding fraction for input data
         
         # Lifting layer: Map input to hidden dimension
