@@ -69,24 +69,29 @@ def plot_combined_training_history(custom_dir: Path, library_dir: Path, save_dir
             linestyle='--', 
             alpha=0.7)
     
-    plt.axvline(x=custom_history['best_epoch'], 
+    custom_stop = len(custom_history['train_loss']) - 1
+    library_stop = len(library_history['train_loss']) - 1
+    
+    plt.axvline(x=custom_stop, 
                 color='seagreen', 
                 linestyle=':', 
                 alpha=0.5,
-                label=f'Custom Best (epoch {custom_history["best_epoch"]})')
-    plt.axvline(x=library_history['best_epoch'], 
+                label=f'Custom Stop (epoch {custom_stop})')
+    plt.axvline(x=library_stop, 
                 color='purple', 
                 linestyle=':', 
                 alpha=0.5,
-                label=f'Library Best (epoch {library_history["best_epoch"]})')
+                label=f'Library Stop (epoch {library_stop})')
     
     plt.title('Training History Comparison')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.yscale('log')
     plt.grid(True, which='both', linestyle='--', alpha=0.4)
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
+    # Calculate position to avoid vertical lines and place legend
+    plt.legend(loc='upper right')  # Simple solution - let matplotlib choose optimal position
+
     plt.savefig(save_dir / 'training_history_comparison.png',
                bbox_inches='tight', dpi=300)
     plt.close()
@@ -254,7 +259,7 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
             spine.set_linewidth(0.8)
             
         # Add error percentage to title
-        error_text = ' '.join([f'{name}: {results_dict[name]["errors"][idx]:.1f}%' 
+        error_text = ' '.join([f'{name}: {results_dict[name]["errors"][idx]:.2f}%' 
                              for name in model_names])
         axes[i, j].set_title(f'Resolution: {res} points\n{error_text}', 
                            pad=10, fontsize=12, weight='bold')

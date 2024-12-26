@@ -12,6 +12,11 @@ from pathlib import Path
 from training import train_model, get_experiment_name, save_config, prepare_data
 
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
 class SpectralConv1d(nn.Module):
     """
     The FNO1d uses SpectralConv1d as its crucial part, 
@@ -38,7 +43,6 @@ class SpectralConv1d(nn.Module):
         """
         return torch.einsum("bix,iox->box", input, weights)
     
-
     def forward(self, x):
         """
             1) Compute Fourier coefficients
@@ -46,9 +50,8 @@ class SpectralConv1d(nn.Module):
             3) Transform the data to physical space
             HINT: Use torch.fft library torch.fft.rfft        
         """
-        # x.shape == [batch_size, in_channels, number of grid points]
         batchsize = x.shape[0]
-
+        
         # Compute Fourier coefficients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft(x)
         
@@ -68,10 +71,18 @@ class FNO1d(nn.Module):
     def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
         """
-        The overall network G_θ(u). It contains [depth] layers of the Fourier layers.
-        1. Lift the input to the desired channel dimension by self.fc0
-        2. For each of the [depth] layers, apply Fourier integral operators (see `SpectralConv1d`)
-        3. Project from the channel space to the output space by self.fc1 and self.fc2
+        The overall network 𝒢_θ(u). It contains [depth] layers of the Fourier layers.
+        Each layer implements:
+        u_(l+1) = σ(K^(l)(u_l) + W^(l)u_l + b^(l))
+        where:
+        - K^(l) is the Fourier integral operator F⁻¹(R⁽ˡ⁾∘F)
+        - W^(l) is the residual connection
+        - b^(l) is the bias term
+        
+        Complete architecture:
+        1. Lift the input to the desired channel dimension by P (self.fc0)
+        2. Apply [depth] layers of Fourier integral operators with residual connections
+        3. Project from the channel space to the output space by Q (self.fc1 and self.fc2)
 
         input: the solution of the initial condition and location (a(x), x)
         input shape: (batchsize, x=s, c=2)
@@ -83,18 +94,25 @@ class FNO1d(nn.Module):
         self.depth = depth                # Number of Fourier layers
         self.padding_frac = padding_frac  # Padding fraction for input data
         
-        # Lifting layer: Map input to hidden dimension
+        # Lifting layer P: Map input to hidden dimension
         self.fc0 = nn.Linear(nfun + 1, self.width)
         
-        # Create Fourier and convolution layers using FIO (SpectralConv1d)
-        self.conv_list = nn.ModuleList([
-            nn.Conv1d(self.width, self.width, 1) for _ in range(self.depth)
-        ])
+        # Fourier integral operator layers K^(l)
         self.spectral_list = nn.ModuleList([
             SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
         ])
         
-        # Projection layers: Map from hidden dimension back to output
+        # Residual connection layers W^(l)
+        self.w_list = nn.ModuleList([
+            nn.Linear(self.width, self.width, bias=False) for _ in range(self.depth)
+        ])
+        
+        # Bias terms b^(l)
+        self.b_list = nn.ParameterList([
+            nn.Parameter(torch.zeros(1, self.width, 1)) for _ in range(self.depth)
+        ])
+        
+        # Projection layers Q: Map from hidden dimension back to output
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, 1)
 
@@ -105,20 +123,31 @@ class FNO1d(nn.Module):
         self.to(device)
 
     def forward(self, x):
-        # Initial lifting layer
+        # Initial lifting layer P
         x = self.fc0(x)
-        x = x.permute(0, 2, 1)
+        x = x.permute(0, 2, 1)  # Now shape is [batch, width, sequence_length]
         
         # Apply padding
         x_padding = int(round(x.shape[-1] * self.padding_frac))
         x = F.pad(x, [0, x_padding])
         
-        # Apply Fourier layers
-        for i, (spectral, conv) in enumerate(zip(self.spectral_list, self.conv_list)):
-            # Fourier and convolution branches
-            x1 = spectral(x)
-            x2 = conv(x)
-            x = x1 + x2
+        # Apply Fourier layers with residual connections and bias
+        for i, (spectral, w, b) in enumerate(zip(self.spectral_list, self.w_list, self.b_list)):
+            # Store input for residual connection
+            x_input = x
+            
+            # Fourier integral operator K^(l)
+            x1 = spectral(x)  # Shape: [batch, width, sequence_length]
+            
+            # Residual connection W^(l)
+            x2 = w(x_input.transpose(1, 2))  # Input: [batch, sequence_length, width]
+            x2 = x2.transpose(1, 2)  # Back to [batch, width, sequence_length]
+            
+            # Expand b to match the sequence length
+            b_expanded = b.expand(-1, -1, x1.size(-1))
+            
+            # Combine with bias: K^(l) + W^(l) + b^(l)
+            x = x1 + x2 + b_expanded
             
             # Apply activation (except for last layer)
             if i != self.depth - 1:
@@ -127,9 +156,10 @@ class FNO1d(nn.Module):
         # Remove padding
         x = x[..., :-x_padding]
         
-        # Final projection layers
-        x = x.permute(0, 2, 1)
+        # Final projection layers Q
+        x = x.permute(0, 2, 1)  # Back to [batch, sequence_length, width]
         x = self.fc1(x)
+        x = self.activation(x)
         x = self.fc2(x)
         return x  # Shape should be [batch_size, sequence_length, 1]
 
@@ -139,7 +169,7 @@ class FNO1d(nn.Module):
         for param in self.parameters():
             nparams += param.numel()
             nbytes += param.data.element_size() * param.numel()
-        print(f'Total number of model parameters: {nparams} (~{format_tensor_size(nbytes)})')
+        print(f'Total number of model parameters: {nparams}')
         return nparams
 
 
