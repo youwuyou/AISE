@@ -1,130 +1,149 @@
+"""
+Code reference and inspiration taken from:
+
+https://github.com/camlab-ethz/ConvolutionalNeuralOperator/blob/517b0ee78a97ed2a7883470a418d2c65eae68d3d/_OtherModels/FNOModules.py
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-from torch.optim import Adam
 import numpy as np
 from pathlib import Path
 from training import train_model, get_experiment_name, save_config, prepare_data
 
 
-
-
 class SpectralConv1d(nn.Module):
     """The FNO1d uses SpectralConv1d as its crucial part."""
-    def __init__(self, in_channels, out_channels, modes1, use_bn=True):
+    def __init__(self, in_channels, out_channels, modes1):
         super(SpectralConv1d, self).__init__()
+        """
+        1D Fourier layer. It does FFT, linear transform, and Inverse FFT.
+        """
+        if not isinstance(modes1, int) or modes1 <= 0:
+            raise ValueError(f"modes1 must be a positive integer, got {modes1}")
+            
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.modes1 = modes1
+        self.modes1 = modes1  # Number of Fourier modes to multiply, at most floor(N/2) + 1
+
         self.scale = (1 / (in_channels * out_channels))
         self.weights1 = nn.Parameter(self.scale * torch.rand(in_channels, out_channels, self.modes1, dtype=torch.cfloat))
-        self.use_bn = use_bn
-        if self.use_bn:
-            self.bn = nn.BatchNorm1d(out_channels)
-            
+
     def compl_mul1d(self, input, weights):
+        """
+        Complex multiplication in 1D
+        (batch, in_channel, x ), (in_channel, out_channel, x) -> (batch, out_channel, x)
+        """
         return torch.einsum("bix,iox->box", input, weights)
     
+
     def forward(self, x):
+        """
+            1) Compute Fourier coefficients
+            2) Multiply relevant Fourier modes
+            3) Transform the data to physical space
+            HINT: Use torch.fft library torch.fft.rfft        
+        """
+        # x.shape == [batch_size, in_channels, number of grid points]
         batchsize = x.shape[0]
 
-        # using real-valued FFT for real-valued input discretized state x
+        # Compute Fourier coefficients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft(x)
-
-        # Batched matrix multiplication for the actual modes we specified
-        # Modes in Fourier space reflect frequency
-        # - lower mode => smaller frequency => longer periods (global information)
-        # - those with high frequency get cut off (normally local information)
-        actual_modes = min(self.modes1, x.size(-1)//2 + 1)        
+        
+        # Use min to limit modes to what's available
+        effective_modes = min(self.modes1, x.size(-1) // 2 + 1)
+        
         out_ft = torch.zeros(batchsize, self.out_channels, x.size(-1)//2 + 1, 
-                           device=x.device, dtype=torch.cfloat)
-        out_ft[:, :, :actual_modes] = self.compl_mul1d(x_ft[:, :, :actual_modes], 
-                                                      self.weights1[:, :, :actual_modes])
+                        device=x.device, dtype=torch.cfloat)
+        out_ft[:, :, :effective_modes] = self.compl_mul1d(x_ft[:, :, :effective_modes], 
+                                                    self.weights1[:,:,:effective_modes])
         
         x = torch.fft.irfft(out_ft, n=x.size(-1))
-        if self.use_bn:
-            x = self.bn(x)
         return x
+
 
 class FNO1d(nn.Module):
-    def __init__(self, modes, width, depth, use_norm=False):
+    def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
-        self.modes1 = modes
-        self.width = width
-        self.depth = depth
-        self.use_norm = use_norm
+        """
+        The overall network. It contains 4 layers of the Fourier layer.
+        1. Lift the input to the desire channel dimension by self.fc0 .
+        2. 4 layers of the integral operators u' = (W + K)(u).
+            W defined by self.w; K defined by self.conv .
+        3. Project from the channel space to the output space by self.fc1 and self.fc2 .
+
+        input: the solution of the initial condition and location (a(x), x)
+        input shape: (batchsize, x=s, c=2)
+        output: the solution of a later timestep
+        output shape: (batchsize, x=s, c=1)
+        """
+        self.modes = modes      # Number of Fourier modes to keep
+        self.width = width      # Number of lifting dimension
+        self.depth = depth      # Number of Fourier layers
+        self.padding_frac = padding_frac  # Padding fraction for input data
         
-        self.linear_p = nn.Linear(2, self.width)
-        if self.use_norm:
-            self.norm_p = nn.LayerNorm(self.width)
+        # Lifting layer: Map input to hidden dimension
+        self.fc0 = nn.Linear(nfun + 1, self.width)
         
-        self.fourier_layers = nn.ModuleList([
-            self._make_fourier_layer() for _ in range(self.depth)
+        # Create Fourier and convolution layers
+        self.conv_list = nn.ModuleList([
+            nn.Conv1d(self.width, self.width, 1) for _ in range(self.depth)
+        ])
+        self.spectral_list = nn.ModuleList([
+            SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
         ])
         
-        self.linear_q = nn.Linear(self.width, self.width)
-        if self.use_norm:
-            self.norm_q = nn.LayerNorm(self.width)
-        
-        self.output_layer = nn.Linear(self.width, 1)
+        # Projection layers: Map from hidden dimension back to output
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, 1)
 
-        # TODO: now trying out identity as activation function
-        self.activation = nn.Softplus()
-        # self.activation = nn.SELU() # worse than Softplus
+        # Activation function
+        self.activation = nn.GELU()
 
+        # Move model to specified device
+        self.to(device)
 
-    def _make_fourier_layer(self):
-        return nn.ModuleList([
-            SpectralConv1d(self.width, self.width, self.modes1),
-            nn.Conv1d(self.width, self.width, 1),
-            nn.LayerNorm(self.width) if self.use_norm else nn.Identity()
-        ])
-    
     def forward(self, x):
-        x = self.linear_p(x)
-        if self.use_norm:
-            x = self.norm_p(x)
+        # Initial lifting layer
+        x = self.fc0(x)
         x = self.activation(x)
         
         x = x.permute(0, 2, 1)
         
-        for spect, conv, norm in self.fourier_layers:
-            spectral_out = spect(x)
-            conv_out = conv(x)
-            combined = spectral_out + conv_out
-            if self.use_norm:
-                combined = combined.permute(0, 2, 1)
-                combined = norm(combined)
-                combined = combined.permute(0, 2, 1)
-            x = self.activation(combined)
+        # Apply padding
+        x_padding = int(round(x.shape[-1] * self.padding_frac))
+        x = F.pad(x, [0, x_padding])
         
+        # Apply Fourier layers
+        for i, (spectral, conv) in enumerate(zip(self.spectral_list, self.conv_list)):
+            # Fourier and convolution branches
+            x1 = spectral(x)
+            x2 = conv(x)
+            x = x1 + x2
+            
+            # Apply activation (except for last layer)
+            if i != self.depth - 1:
+                x = self.activation(x)
+        
+        # Remove padding
+        x = x[..., :-x_padding]
+        
+        # Final projection layers
         x = x.permute(0, 2, 1)
-        x = self.linear_q(x)
-        if self.use_norm:
-            x = self.norm_q(x)
+        x = self.fc1(x)
         x = self.activation(x)
-        x = self.output_layer(x)
-        return x
+        x = self.fc2(x)
+        return x  # Shape should be [batch_size, sequence_length, 1]
 
-"""
-The best performing configurations achieved error rates around 6-7%, with the optimal settings being:
+    def print_size(self):
+        nparams = 0
+        nbytes = 0
+        for param in self.parameters():
+            nparams += param.numel()
+            nbytes += param.data.element_size() * param.numel()
+        print(f'Total number of model parameters: {nparams} (~{format_tensor_size(nbytes)})')
+        return nparams
 
-Modes: 25 (6.07% error) with depth=2
-Batch size: 5 (7.27% error), better than 2 (8.60%) or 8 (17.51%)
-Depth: 2 appears optimal for most configurations, with depth=1 giving 7.43% and depth=10 leading to worse performance (14.92%)
-Width: Both 64 and 128 performed similarly (around 9%)
-Step size: 100 performed best (8.57%), with larger values (250, 500) increasing error to 11.18%
-Gamma: 0.1 was used consistently
-
-The most sensitive parameters appear to be:
-
-Number of modes (ranging from 6.07% to 9.47% error)
-Depth (ranging from 6.83% to 14.92% error)
-Batch size (ranging from 7.27% to 17.51% error)
-
-The final configuration shown uses these insights with modes=25, depth=2, and batch_size=5, which aligns with the better performing settings discovered during testing.
-"""
 
 def main():
     # Set random seeds
@@ -132,26 +151,24 @@ def main():
     np.random.seed(0)
     
     # Model configuration
+    # checkpoints/custom_fno/fno_m30_w64_d4_lr0.001_20241226_165037
+    # 12.39% resolution 32; 5.44% resolution 64
     model_config = {
-        'modes': 25, # 5.88% resolution 64, 9.68% resolution 32
-        # 'modes': 20, # 7.08% resolution 64, 9.98% resolution 32
-        # 'modes': 15, # 6.45% resolution 64, 9.40% resolution 32
-        # 'modes': 10, # 9.04% resolution 64, 10.82% resolution 32
-        'width': 64,
-        'depth': 2,
-        'use_norm': False,
-        'model_type': 'custom'  # Add model type identifier
+        "depth": 4,
+        "modes": 30,
+        "width": 64,
+        "model_type": "custom"
     }
-    
+
     # Training configuration
     training_config = {
         'n_train': 64,
         'batch_size': 5,
         'learning_rate': 0.001,
-        'epochs': 500,
+        'epochs': 400,
         'step_size': 100,
         'gamma': 0.1,
-        'patience': 50,
+        'patience': 40,
         'freq_print': 1
     }
     

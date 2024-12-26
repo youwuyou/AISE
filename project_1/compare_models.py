@@ -1,3 +1,7 @@
+"""
+Main module that evaluates the already trained FNO models on various dataset, finishing tasks from project 1
+"""
+
 import torch
 import numpy as np
 from pathlib import Path
@@ -9,14 +13,9 @@ from visualization import (
     plot_combined_training_history,
     plot_training_history, 
     plot_trajectory_grid, 
-    plot_resolution_comparison, 
+    plot_resolution_comparison,
     plot_l2_error_by_resolution,
-    plot_error_distributions,
-
-    # Experimental
-    compute_avg_spectra,
-    plot_log_spectra,
-    plot_log_spectra_and_error_across_resolutions
+    plot_error_distributions
 )
 
 def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
@@ -34,7 +33,7 @@ def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
         model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
         model = LibraryFNO(**model_args)
     
-    model.load_state_dict(torch.load(checkpoint_dir / 'best_model.pth'))
+    model.load_state_dict(torch.load(checkpoint_dir / 'best_model.pth', weights_only=True))    
     model.eval()
     return model
 
@@ -100,31 +99,6 @@ def prepare_resolution_data(resolutions, n_samples=64):
     return data_dict
 
 
-#============== EXPERIMENTAL =================
-
-
-def task_plot_log_spectra(models, res_dir):
-   import numpy as np
-   import torch
-   print("\nAnalyzing frequency spectra...")
-   
-   data = np.load("data/test_sol.npy")
-   n_samples, _, resolution = data.shape
-   
-   u0 = torch.from_numpy(data[:, 0, :]).float()
-   uT = torch.from_numpy(data[:, -1, :]).float()
-   dataset = torch.utils.data.TensorDataset(u0, uT)
-   data_loader = torch.utils.data.DataLoader(dataset, batch_size=32)
-   
-   plot_log_spectra(models, data_loader, res_dir / 'log_spectra.png')
-
-
-
-
-
-#=============================================
-
-
 def task1_evaluation(models, res_dir):
     print("\033[1mTask 1: Evaluating FNO models from one-to-one training on standard test set...\033[0m")    
     
@@ -184,13 +158,6 @@ def task2_evaluation(models, res_dir):
         resolution_results,
         resolutions,
         save_dir=res_dir,
-    )
-
-    # Plot spectra comparisons across resolutions
-    plot_log_spectra_and_error_across_resolutions(
-        models, 
-        resolutions, 
-        save_path='results/log_spectra_across_resolutions.png'
     )
     
     return resolution_results
@@ -266,20 +233,19 @@ def main():
     print(f"Loading Custom FNO from: {custom_experiments[-1]}")
     print(f"Loading Library FNO from: {library_experiments[-1]}")
     
-    # print("Plotting training histories...")
-    # for exp_dir in [custom_experiments[-1], library_experiments[-1]]:
-    #     plot_training_history(exp_dir)
+    print("Plotting training histories...")
+    for exp_dir in [custom_experiments[-1], library_experiments[-1]]:
+        plot_training_history(exp_dir)
     
     plot_combined_training_history(
         custom_experiments[-1],
-        library_experiments[-1]
+        library_experiments[-1],
+        save_dir=res_dir
     )
     
-    # task1_results = task1_evaluation(models, res_dir)
+    task1_results = task1_evaluation(models, res_dir)
     task2_results = task2_evaluation(models, res_dir)
-    # task3_results = task3_evaluation(models, res_dir)
-    # Add spectra analysis
-    # task_plot_log_spectra(models, res_dir)
+    task3_results = task3_evaluation(models, res_dir)
 
     print("\n\033[1mTask 4: Testing on All2All Training:\033[0m")
     print("\n\033[1mTODO!\033[0m")

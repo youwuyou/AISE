@@ -1,4 +1,7 @@
-# training.py
+"""
+Utility functions used for training the FNO modelm used for both custom and library-based implementation
+"""
+
 import torch
 import numpy as np
 import json
@@ -23,47 +26,56 @@ def save_config(config, save_dir):
         json.dump(config, f, indent=4)
 
 
-def prepare_data(data_path, n_train, batch_size, use_library=False):
+def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='fno2d'):
     """
-    Unified data preparation function that can handle both custom and library FNO formats.
+    Modified data preparation function that can handle FNO1D format.
     
     Args:
         data_path (str): Path to the data file
         n_train (int): Number of training samples
         batch_size (int): Batch size
         use_library (bool): If True, prepares data in library FNO format
+        model_type (str): Type of FNO model ('fno1d' or 'fno2d')
     """
     data = torch.from_numpy(np.load(data_path)).type(torch.float32)
     u_0_all = data[:, 0, :]   # All initial conditions
-
-    # FIXME: it was 4 before!
     u_T_all = data[:, -1, :]  # All output data
     
-    # Create spatial grid
-    x_grid = torch.linspace(0, 1, 64).float()
-    
-    def prepare_input(u0):
-        batch_size = u0.shape[0]
-        x_grid_expanded = x_grid.expand(batch_size, -1)
+    if model_type == 'fno1d':
+        # For FNO1D, we only need the initial condition as input
+        # Format: [batch_size, channels=1, spatial_dim]
+        input_function_train = u_0_all[:n_train, :].unsqueeze(1)  # Add channel dimension
+        input_function_test = u_0_all[n_train:, :].unsqueeze(1)   # Add channel dimension
+        
+        # Format outputs similarly
+        output_function_train = u_T_all[:n_train, :].unsqueeze(1)  # Add channel dimension
+        output_function_test = u_T_all[n_train:, :].unsqueeze(1)   # Add channel dimension
+        
+    else:  # Original FNO2D format
+        # Create spatial grid
+        x_grid = torch.linspace(0, 1, 64).float()
+        
+        def prepare_input(u0):
+            batch_size = u0.shape[0]
+            x_grid_expanded = x_grid.expand(batch_size, -1)
+            if use_library:
+                # Library format: [batch_size, channels, spatial_dim, 1]
+                input_data = torch.stack((u0, x_grid_expanded), dim=1)
+                return input_data.unsqueeze(-1)
+            else:
+                # Custom format: [batch_size, spatial_dim, 2]
+                return torch.stack((u0, x_grid_expanded), dim=-1)
+        
+        # Prepare inputs and outputs in original format
+        input_function_train = prepare_input(u_0_all[:n_train, :])
+        input_function_test = prepare_input(u_0_all[n_train:, :])
+        
         if use_library:
-            # Library format: [batch_size, channels, spatial_dim, 1]
-            input_data = torch.stack((u0, x_grid_expanded), dim=1)
-            return input_data.unsqueeze(-1)
+            output_function_train = u_T_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
+            output_function_test = u_T_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
         else:
-            # Custom format: [batch_size, spatial_dim, 2]
-            return torch.stack((u0, x_grid_expanded), dim=-1)
-    
-    # Prepare training and test inputs
-    input_function_train = prepare_input(u_0_all[:n_train, :])
-    input_function_test = prepare_input(u_0_all[n_train:, :])
-    
-    # Prepare outputs based on format
-    if use_library:
-        output_function_train = u_T_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
-        output_function_test = u_T_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
-    else:
-        output_function_train = u_T_all[:n_train, :].unsqueeze(-1)
-        output_function_test = u_T_all[n_train:, :].unsqueeze(-1)
+            output_function_train = u_T_all[:n_train, :].unsqueeze(-1)
+            output_function_test = u_T_all[n_train:, :].unsqueeze(-1)
     
     # Create DataLoaders
     training_set = DataLoader(TensorDataset(input_function_train, output_function_train), 
@@ -89,7 +101,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), 
-                                lr=config['learning_rate'], 
+                                lr=config['learning_rate'],
                                 weight_decay=1e-4)
     
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
