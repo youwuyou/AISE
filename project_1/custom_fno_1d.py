@@ -68,9 +68,9 @@ class FNO1d(nn.Module):
     def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
         """
-        The overall network G_θ(u). It contains [depth] layers of the Fourier layers (See `SpectralConv1d`).
+        The overall network G_θ(u). It contains [depth] layers of the Fourier layers.
         1. Lift the input to the desired channel dimension by self.fc0
-        2. For each of the [depth] layers, apply Fourier integral operators:
+        2. For each of the [depth] layers, apply Fourier integral operators (see `SpectralConv1d`)
         3. Project from the channel space to the output space by self.fc1 and self.fc2
 
         input: the solution of the initial condition and location (a(x), x)
@@ -86,7 +86,7 @@ class FNO1d(nn.Module):
         # Lifting layer: Map input to hidden dimension
         self.fc0 = nn.Linear(nfun + 1, self.width)
         
-        # Create Fourier and convolution layers
+        # Create Fourier and convolution layers using FIO (SpectralConv1d)
         self.conv_list = nn.ModuleList([
             nn.Conv1d(self.width, self.width, 1) for _ in range(self.depth)
         ])
