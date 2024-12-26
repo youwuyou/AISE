@@ -15,7 +15,7 @@ The repository consists of three main projects, we try to resolve all projects u
 
 | Task  | ML-based Implementation | Numerical Solver Implementation | Documentation |
 |-------------------------------|-------------------|------------------|---------------|
-| 1. 1D Wave Equation (FNO) | 🚧 In Progress    | N/A   | ⏳  |
+| 1. 1D Wave Equation (FNO) | ✅  | N/A   | ✅  |
 | Bonus 1: All2all Training     | ⏳ Not Started    | N/A | ⏳  |
 | 2. PDE-Find   | ⏳ Not Started    | ⏳ Not Started   | ⏳ |
 | 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  |
