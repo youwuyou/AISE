@@ -63,59 +63,52 @@ class SpectralConv1d(nn.Module):
 
 
 class FNO1d(nn.Module):
-    def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
-        super(FNO1d, self).__init__()
-        """
-        The overall network 𝒢_θ(u). It contains [depth] layers of the Fourier layers.
-        Each layer implements:
-        u_(l+1) = σ(K^(l)(u_l) + W^(l)u_l + b^(l))
-        where:
-        - K^(l) is the Fourier integral operator F⁻¹(R⁽ˡ⁾∘F)
-        - W^(l) is the residual connection
-        - b^(l) is the bias term
-        
-        Complete architecture:
-        1. Lift the input to the desired channel dimension by P (self.fc0)
-        2. Apply [depth] layers of Fourier integral operators with residual connections
-        3. Project from the channel space to the output space by Q (self.fc1 and self.fc2)
+    def __init__(self, modes, width, depth, device="cuda", nfun=1, padding_frac=1/4):  # Changed default device
+       super(FNO1d, self).__init__()
+       """
+       The overall network 𝒢_θ(u). It contains [depth] layers of the Fourier layers.
+       Each layer implements:
+       u_(l+1) = σ(K^(l)(u_l) + W^(l)u_l + b^(l))
+       where:
+       - K^(l) is the Fourier integral operator F⁻¹(R⁽ˡ⁾∘F)
+       - W^(l) is the residual connection
+       - b^(l) is the bias term
+       
+       Complete architecture:
+       1. Lift the input to the desired channel dimension by P (self.fc0)
+       2. Apply [depth] layers of Fourier integral operators with residual connections
+       3. Project from the channel space to the output space by Q (self.fc1 and self.fc2)
 
-        input: the solution of the initial condition and location (a(x), x)
-        input shape: (batchsize, x=s, c=2)
-        output: the solution of a later timestep
-        output shape: (batchsize, x=s, c=1)
-        """
-        self.modes = modes                # Number of Fourier modes to keep
-        self.width = width                # Number of lifting dimension
-        self.depth = depth                # Number of Fourier layers
-        self.padding_frac = padding_frac  # Padding fraction for input data
-        
-        # Lifting layer P: Map input to hidden dimension
-        self.fc0 = nn.Linear(nfun + 1, self.width)
-        
-        # Fourier integral operator layers K^(l)
-        self.spectral_list = nn.ModuleList([
-            SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
-        ])
-        
-        # Residual connection layers W^(l)
-        self.w_list = nn.ModuleList([
-            nn.Linear(self.width, self.width, bias=False) for _ in range(self.depth)
-        ])
-        
-        # Bias terms b^(l)
-        self.b_list = nn.ParameterList([
-            nn.Parameter(torch.zeros(1, self.width, 1)) for _ in range(self.depth)
-        ])
-        
-        # Projection layers Q: Map from hidden dimension back to output
-        self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, 1)
+       input: the solution of the initial condition and location (a(x), x)
+       input shape: (batchsize, x=s, c=2)
+       output: the solution of a later timestep
+       output shape: (batchsize, x=s, c=1)
+       """
+       self.modes = modes                
+       self.width = width                
+       self.depth = depth                
+       self.padding_frac = padding_frac  
+       
+       self.fc0 = nn.Linear(nfun + 1, self.width)
+       
+       self.spectral_list = nn.ModuleList([
+           SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
+       ])
+       
+       self.w_list = nn.ModuleList([
+           nn.Linear(self.width, self.width, bias=False) for _ in range(self.depth)
+       ])
+       
+       self.b_list = nn.ParameterList([
+           nn.Parameter(torch.zeros(1, self.width, 1)) for _ in range(self.depth)
+       ])
+       
+       self.fc1 = nn.Linear(self.width, 128)
+       self.fc2 = nn.Linear(128, 1)
 
-        # Activation function
-        self.activation = nn.GELU()
+       self.activation = nn.GELU()
 
-        # Move model to specified device
-        self.to(device)
+       self.to(device)  # Move model to specified device
 
     def forward(self, x):
         # Initial lifting layer P
@@ -169,68 +162,80 @@ class FNO1d(nn.Module):
 
 
 def main():
-    # Set random seeds
-    torch.manual_seed(0)
-    np.random.seed(0)
-    
-    # Model configuration
-    # checkpoints/custom_fno/fno_m30_w64_d4_lr0.001_20241226_165037
-    # 12.39% resolution 32; 5.44% resolution 64
-    model_config = {
-        "depth": 4,
-        "modes": 30,
-        "width": 64,
-        "model_type": "custom"
-    }
+   # Set device
+   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+   print(f"Using device: {device}")
+   print("CUDA available:", torch.cuda.is_available())
+   if torch.cuda.is_available():
+       print("GPU device:", torch.cuda.get_device_name(0))
+   
+   # Set random seeds
+   torch.manual_seed(0)
+   np.random.seed(0)
+   if torch.cuda.is_available():
+       torch.cuda.manual_seed(0)
+   
+   # Model configuration
+   # checkpoints/custom_fno/fno_m30_w64_d4_lr0.001_20241227_190139
+   # 11.99% resolution 32; 4.92% resolution 64
+   model_config = {
+       "depth": 4,
+       "modes": 30,
+       "width": 64,
+       "model_type": "custom",
+       "device": device
+   }
 
-    # Training configuration
-    training_config = {
-        'n_train': 64,
-        'batch_size': 5,
-        'learning_rate': 0.001,
-        'epochs': 400,
-        'step_size': 100,
-        'gamma': 0.1,
-        'patience': 40,
-        'freq_print': 1
-    }
-    
-    # Combine configurations for experiment naming
-    naming_config = {**model_config, 'learning_rate': training_config['learning_rate']}
-    
-    # Create experiment directory
-    experiment_name = get_experiment_name(naming_config)
-    checkpoint_dir = Path("checkpoints/custom_fno") / experiment_name
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save full configuration
-    config = {
-        'model_config': model_config,
-        'training_config': training_config
-    }
-    save_config(config, checkpoint_dir)
-    
-    # Prepare data (note: custom FNO doesn't use library=True flag)
-    training_set, testing_set, test_data = prepare_data(
-        "data/train_sol.npy",
-        training_config['n_train'],
-        training_config['batch_size']
-    )
-    
-    # Initialize model
-    model = FNO1d(**{k: v for k, v in model_config.items() if k != 'model_type'})
-    
-    # Train model
-    trained_model, training_history = train_model(
-        model=model,
-        training_set=training_set,
-        testing_set=testing_set,
-        config=training_config,
-        checkpoint_dir=checkpoint_dir
-    )
-    
-    print(f"Training completed. Model saved in {checkpoint_dir}")
-    print(f"Best validation loss: {training_history['best_val_loss']:.6f} at epoch {training_history['best_epoch']}")
+   # Training configuration
+   training_config = {
+       'n_train': 64,
+       'batch_size': 5,
+       'learning_rate': 0.001,
+       'epochs': 400,
+       'step_size': 100,
+       'gamma': 0.1,
+       'patience': 40,
+       'freq_print': 1,
+       'device': device
+   }
+   
+   # Combine configurations for experiment naming
+   naming_config = {**model_config, 'learning_rate': training_config['learning_rate']}
+   
+   # Create experiment directory
+   experiment_name = get_experiment_name(naming_config)
+   checkpoint_dir = Path("checkpoints/custom_fno") / experiment_name
+   checkpoint_dir.mkdir(parents=True, exist_ok=True)
+   
+   # Save full configuration
+   config = {
+       'model_config': model_config,
+       'training_config': training_config
+   }
+   save_config(config, checkpoint_dir)
+   
+   # Prepare data
+   training_set, testing_set, test_data = prepare_data(
+       "data/train_sol.npy",
+       training_config['n_train'],
+       training_config['batch_size'],
+       device=device
+   )
+   
+   # Initialize model with device
+   model = FNO1d(**{k: v for k, v in model_config.items() if k != 'model_type'})
+   
+   # Train model
+   trained_model, training_history = train_model(
+       model=model,
+       training_set=training_set,
+       testing_set=testing_set,
+       config=training_config,
+       checkpoint_dir=checkpoint_dir
+   )
+   
+   print(f"Training completed. Model saved in {checkpoint_dir}")
+   print(f"Best validation loss: {training_history['best_val_loss']:.6f} at epoch {training_history['best_epoch']}")
 
 if __name__ == "__main__":
-    main()
+   main()

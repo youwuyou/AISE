@@ -14,13 +14,22 @@ from training import train_model, get_experiment_name, save_config, prepare_data
 
 
 def main():
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    print("CUDA available:", torch.cuda.is_available())
+    if torch.cuda.is_available():
+        print("GPU device:", torch.cuda.get_device_name(0))
+    
     # Set random seeds
     torch.manual_seed(0)
     np.random.seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(0)
     
     # Model configuration
-    # checkpoints/library_fno/fno_m30_w64_lr0.001_20241226_172707
-    # 9.53% resolution 32; 7.23% resolution 64
+    # checkpoints/library_fno/fno_m30_w64_lr0.001_20241227_190320
+    # 11.47% resolution 32; 8.19% resolution 64
     model_config = {
         'n_layers': 4,
         'hidden_channels': 64,
@@ -39,7 +48,8 @@ def main():
         'step_size': 100,
         'gamma': 0.1,
         'patience': 40,
-        'freq_print': 1
+        'freq_print': 1,
+        'device': device
     }
     
     # Combine configurations for experiment naming
@@ -65,8 +75,9 @@ def main():
         use_library=True
     )
     
-    # Initialize model
+    # Initialize model and move to device
     model = FNO(**{k: v for k, v in model_config.items() if k != 'model_type'})
+    model = model.to(device)
     
     # Train model
     trained_model, training_history = train_model(
@@ -82,6 +93,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-

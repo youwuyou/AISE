@@ -19,6 +19,7 @@ from visualization import (
 )
 
 def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     checkpoint_dir = Path(checkpoint_dir)
     
     with open(checkpoint_dir / 'training_config.json', 'r') as f:
@@ -34,15 +35,18 @@ def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
         model = LibraryFNO(**model_args)
     
     model.load_state_dict(torch.load(checkpoint_dir / 'best_model.pth', weights_only=True))    
+    model = model.to(device)  # Move model to GPU
     model.eval()
     return model
 
 def evaluate_models(models, data_path):
+    device = next(iter(models.values())).parameters().__next__().device  # Get device from model
+    
     data = np.load(data_path)
     n_samples, _, resolution = data.shape
     
-    u0 = torch.from_numpy(data[:, 0, :]).float()
-    uT = torch.from_numpy(data[:, -1, :]).float()
+    u0 = torch.from_numpy(data[:, 0, :]).float().to(device)
+    uT = torch.from_numpy(data[:, -1, :]).float().to(device)
     
     print(f"Data shape: {data.shape} (trajectories, timestamps, resolution)")
     print(f"Testing on {n_samples} trajectories with resolution {resolution}")
@@ -54,41 +58,39 @@ def evaluate_models(models, data_path):
             model_type = 'library' if 'Library' in name else 'custom'
             
             if model_type == 'library':
-                x_grid = torch.linspace(0, 1, resolution).float()
+                x_grid = torch.linspace(0, 1, resolution).float().to(device)
                 x_grid_expanded = x_grid.expand(u0.shape[0], -1)
                 model_input = torch.stack((u0, x_grid_expanded), dim=1).unsqueeze(-1)
                 predictions = model(model_input)
                 predictions = predictions.squeeze(-1).squeeze(1)
             else:
-                x_grid = torch.linspace(0, 1, resolution).float()
+                x_grid = torch.linspace(0, 1, resolution).float().to(device)
                 x_grid_expanded = x_grid.expand(u0.shape[0], -1)
                 model_input = torch.stack((u0, x_grid_expanded), dim=-1)
                 predictions = model(model_input)
                 predictions = predictions.squeeze(-1)
             
-            # Calculate absolute L2 errors first
             individual_abs_errors = torch.norm(predictions - uT, p=2, dim=1) / torch.norm(uT, p=2, dim=1)
-            # Calculate mean of absolute errors, then convert to percentage
             average_error = individual_abs_errors.mean().item() * 100
-            # Convert individual errors to percentage for visualization
             individual_errors_percent = individual_abs_errors.mul(100).tolist()
             
             results[name] = {
-                'predictions': predictions,
+                'predictions': predictions.cpu(),  # Move back to CPU for plotting
                 'error': average_error,
                 'individual_errors': individual_errors_percent
             }
     
-    return results, (u0, uT)
+    return results, (u0.cpu(), uT.cpu())  # Return CPU tensors for plotting
 
 def prepare_resolution_data(resolutions, n_samples=64):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data_dict = {}
     for res in resolutions:
         data = np.load(f"data/test_sol_res_{res}.npy")
-        u0 = torch.from_numpy(data[:n_samples, 0, :]).float()
-        uT = torch.from_numpy(data[:n_samples, -1, :]).float()
+        u0 = torch.from_numpy(data[:n_samples, 0, :]).float().to(device)
+        uT = torch.from_numpy(data[:n_samples, -1, :]).float().to(device)
         
-        x_grid = torch.linspace(0, 1, res).float()
+        x_grid = torch.linspace(0, 1, res).float().to(device)
         x_grid_expanded = x_grid.expand(u0.shape[0], -1)
         
         data_dict[res] = {
@@ -97,7 +99,6 @@ def prepare_resolution_data(resolutions, n_samples=64):
                        uT.unsqueeze(1).unsqueeze(-1))
         }
     return data_dict
-
 
 def task1_evaluation(models, res_dir):
     print("\033[1mTask 1: Evaluating FNO models from one-to-one training on standard test set...\033[0m")    
@@ -108,18 +109,24 @@ def task1_evaluation(models, res_dir):
     for name, result in results.items():
         print(f"{name}: {result['error']:.2f}%")
     
+    device = next(iter(models.values())).parameters().__next__().device
     u0, uT = test_data
-    custom_input = torch.stack((u0, torch.linspace(0, 1, u0.shape[1]).expand(u0.shape)), dim=-1)
-    library_input = torch.stack((u0, torch.linspace(0, 1, u0.shape[1]).expand(u0.shape)), dim=1).unsqueeze(-1)
+    # Move to device for computation
+    u0, uT = u0.to(device), uT.to(device)
+    x_grid = torch.linspace(0, 1, u0.shape[1]).to(device)
+    
+    custom_input = torch.stack((u0, x_grid.expand(u0.shape)), dim=-1)
+    library_input = torch.stack((u0, x_grid.expand(u0.shape)), dim=1).unsqueeze(-1)
     
     for name, model in models.items():
         model_type = 'library' if 'Library' in name else 'custom'
         input_data = library_input if model_type == 'library' else custom_input
         output_format = uT.unsqueeze(1).unsqueeze(-1) if model_type == 'library' else uT
         
+        # Move predictions back to CPU before plotting
         plot_trajectory_grid(
-            input_data, 
-            output_format, 
+            input_data.cpu(), 
+            output_format.cpu(), 
             model,
             individual_errors=results[name]['individual_errors'],
             predictions=results[name]['predictions'],
