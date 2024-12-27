@@ -18,23 +18,9 @@ def evaluate_model(model,
                    autoregressive=False,
                    mean=0, 
                    std=0.3835):
-    """
-    Unified evaluation function supporting both direct and autoregressive predictions.
-
-    Args:
-        model: Trained FNO model
-        data_path (str): Path to .npy test dataset
-        time_strategy (str): Either "single" (direct prediction) or "auto" (autoregressive)
-        timesteps (list): List of timesteps or time increments depending on strategy
-        autoregressive (bool): Whether to use previous predictions as input
-        mean (float): Mean for data normalization
-        std (float): Std dev for data normalization
-    
-    Returns:
-        predictions_dict (dict): {time_value -> predicted_solutions}
-        errors_dict (dict): {time_value -> average_relative_L2_error}
-    """
+    """[Keep original docstring]"""
     # Load data and set model in eval mode
+    device = next(model.parameters()).device  # Get model's device
     data = np.load(data_path)
     model.eval()
     
@@ -45,7 +31,7 @@ def evaluate_model(model,
     # Initialize storage
     predictions_dict = {}
     errors_dict = {}
-    current_conditions = torch.from_numpy(initial_conditions).float()
+    current_conditions = torch.from_numpy(initial_conditions).float().to(device)
     current_time = 0.0
     
     with torch.no_grad():
@@ -57,7 +43,7 @@ def evaluate_model(model,
                 
                 for i in range(n_test):
                     # Prepare input
-                    x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1)
+                    x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
                     x = (x - mean) / std
                     
                     # Add time channel
@@ -65,11 +51,11 @@ def evaluate_model(model,
                     x = torch.cat([x, t_channel], dim=1)
                     
                     # Get prediction
-                    t = torch.tensor([t_val]).float().reshape(1)
+                    t = torch.tensor([t_val]).float().reshape(1).to(device)
                     pred = model(x, t)
                     
-                    # Denormalize prediction
-                    pred = pred.squeeze().numpy() * std + mean
+                    # Move to CPU and denormalize prediction
+                    pred = pred.cpu().squeeze().numpy() * std + mean
                     predictions[i] = pred
                     
                     # Compute error
@@ -85,7 +71,7 @@ def evaluate_model(model,
         
         else:
             # Autoregressive prediction
-            predictions_dict[0.0] = current_conditions.numpy()
+            predictions_dict[0.0] = current_conditions.cpu().numpy()
             
             for dt in timesteps:
                 current_time += dt
@@ -101,15 +87,15 @@ def evaluate_model(model,
                     x = torch.cat([x, t_channel], dim=1)
                     
                     # Get prediction
-                    t = torch.tensor([dt]).float().reshape(1)
+                    t = torch.tensor([dt]).float().reshape(1).to(device)
                     pred = model(x, t)
                     
-                    # Denormalize prediction
-                    pred = pred.squeeze() * std + mean
+                    # Move to CPU and denormalize prediction
+                    pred = pred.cpu().squeeze() * std + mean
                     next_predictions[i] = pred
                 
                 # Store predictions
-                predictions_dict[current_time] = next_predictions.numpy()
+                predictions_dict[current_time] = next_predictions.cpu().numpy()
                 
                 # Compute errors if ground truth is available
                 try:
@@ -119,7 +105,7 @@ def evaluate_model(model,
                     relative_l2_errors = np.zeros(n_test)
                     for i in range(n_test):
                         error = np.linalg.norm(
-                            next_predictions[i].numpy() - ground_truth[i]
+                            next_predictions[i].cpu().numpy() - ground_truth[i]
                         ) / np.linalg.norm(ground_truth[i])
                         relative_l2_errors[i] = error * 100
                     
@@ -133,11 +119,9 @@ def evaluate_model(model,
     
     return predictions_dict, errors_dict
 
-
 def evaluate_ood(model, data_path="data/test_sol_OOD.npy", mean=0, std=0.3835):
-    """
-    Evaluate model predictions on an OOD (Out Of Distribution) dataset at t=1.0.
-    """
+    """[Keep original docstring]"""
+    device = next(model.parameters()).device  # Get model's device
     ood_data = np.load(data_path)
     model.eval()
     
@@ -150,14 +134,14 @@ def evaluate_ood(model, data_path="data/test_sol_OOD.npy", mean=0, std=0.3835):
     
     with torch.no_grad():
         for i in range(n_test):
-            x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1)
+            x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
             x = (x - mean) / std
             t_channel = torch.ones_like(x)
             x = torch.cat([x, t_channel], dim=1)
-            t = torch.tensor([1.0]).float().reshape(1)
+            t = torch.tensor([1.0]).float().reshape(1).to(device)
             
             pred = model(x, t)
-            pred = pred.squeeze().numpy() * std + mean
+            pred = pred.cpu().squeeze().numpy() * std + mean
             predictions[i] = pred
             
             error = np.linalg.norm(pred - final_solutions[i]) / np.linalg.norm(final_solutions[i])
@@ -211,7 +195,6 @@ def bonus_task_evaluation(model, res_dir):
     
     # 1. Direct prediction at multiple timesteps
     print("\n\033[1mDirect Inference at multiple timesteps\033[0m")
-
     predictions1, errors1 = evaluate_model(
         model,
         data_path="data/test_sol.npy",
@@ -242,7 +225,8 @@ def bonus_task_evaluation(model, res_dir):
     plt.title('Error Comparison: Direct vs. Autoregressive')
     plt.grid(True)
     plt.legend()
-    plt.show()
+    plt.savefig(res_dir / 'error_comparison.png')
+    plt.close()
 
     # 5. Evaluate on OOD
     print("\n\033[1mTesting OOD at t = 1.0\033[0m")
@@ -257,7 +241,7 @@ def bonus_task_evaluation(model, res_dir):
         autoregressive=False,
         timesteps=timesteps
     )
-    fig = visualize_predictions_heatmap(
+    visualize_predictions_heatmap(
         "data/test_sol.npy",
         model,
         predictions_dict,
@@ -265,21 +249,23 @@ def bonus_task_evaluation(model, res_dir):
         res_dir=res_dir,
         figsize=(24, 5)
     )
-    plt.show()
     
     return predictions1, predictions2, predictions_dict
 
 
 
 def main():
+    # Get device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"Using device: {device}")
+    if torch.cuda.is_available():
+        print(f"GPU device: {torch.cuda.get_device_name(0)}")
+
     # Directory for saving results
     res_dir = Path("results_time")
     res_dir.mkdir(exist_ok=True)
     
-    # ----------------------------------------------------------------
     # Find the newest experiment folder under 'checkpoints/custom_fno/time'
-    # that matches the pattern 'fno_*'
-    # ----------------------------------------------------------------
     experiment_dirs = sorted(
         Path("checkpoints/custom_fno/time").glob("fno_*"),
         key=lambda d: d.stat().st_mtime  # sort by last-modified time
@@ -292,9 +278,7 @@ def main():
     checkpoint_dir = experiment_dirs[-1]  # The last one is the newest
     print(f"Evaluating the newest experiment: {checkpoint_dir}")
 
-    # ----------------------------------------------------------------
     # Load config from the newest experiment folder
-    # ----------------------------------------------------------------
     config_file = checkpoint_dir / "training_config.json"
     if not config_file.is_file():
         raise FileNotFoundError(f"No config file found at: {config_file}")
@@ -305,27 +289,25 @@ def main():
     model_config = config_dict["model_config"]
     training_config = config_dict["training_config"]
 
-    # ----------------------------------------------------------------
     # Initialize the model from config
-    # ----------------------------------------------------------------
     model_args = {k: v for k, v in model_config.items() if k != "model_type"}
     model = FNO1d(**model_args)
 
-    # ----------------------------------------------------------------
-    # Load the model weights
-    # ----------------------------------------------------------------
+    # Load the model weights and move to device
     model_path = checkpoint_dir / "best_model.pth"
     if not model_path.is_file():
         raise FileNotFoundError(f"No model checkpoint file at: {model_path}")
 
-    model.load_state_dict(torch.load(model_path, map_location="cpu"))
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model = model.to(device)
+    model.eval()
 
-    # ----------------------------------------------------------------
     # Evaluate tasks
-    # ----------------------------------------------------------------
     print(f"Running evaluations in {checkpoint_dir} ...")
     task4_results = task4_evaluation(model, res_dir)
     bonus_results = bonus_task_evaluation(model, res_dir)
+
+    print(f"\nAll plots have been saved in the '{res_dir}' directory.")
 
 if __name__ == "__main__":
     main()

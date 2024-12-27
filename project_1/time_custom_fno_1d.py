@@ -13,15 +13,15 @@ from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 
+# Make sure these imports point to your own local files
 from time_training import (
-PDEDataset, 
-train_model
+    PDEDataset, 
+    train_model
 )
 from training import (
-get_experiment_name,
-save_config
+    get_experiment_name,
+    save_config
 )
-
 from visualization import plot_training_history
 
 
@@ -67,7 +67,8 @@ class FILM(nn.Module):
         x = self.norm(x)
         
         # 2) Process time information
-        time = time.reshape(-1, 1).type_as(x)  # [B] -> [B,1]
+        #    Move time to the same device as x
+        time = time.reshape(-1, 1).to(x.device)  # <-- ensure same device
         
         # 3) Get modulation parameters from time
         scale = self.inp2scale(time)     # [B, C]
@@ -97,9 +98,9 @@ class SpectralConv1d(nn.Module):
         self.modes1 = modes1  # Number of Fourier modes to multiply, at most floor(N/2) + 1
 
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(self.scale * torch.rand(
-            in_channels, out_channels, self.modes1, dtype=torch.cfloat
-        ))
+        self.weights1 = nn.Parameter(
+            self.scale * torch.rand(in_channels, out_channels, self.modes1, dtype=torch.cfloat)
+        )
 
     def compl_mul1d(self, input, weights):
         """
@@ -122,8 +123,13 @@ class SpectralConv1d(nn.Module):
         
         # Multiply relevant Fourier modes
         effective_modes = min(self.modes1, x.size(-1) // 2 + 1)
-        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-1)//2 + 1, 
-                             device=x.device, dtype=torch.cfloat)
+        out_ft = torch.zeros(
+            batchsize, 
+            self.out_channels, 
+            x.size(-1)//2 + 1, 
+            device=x.device,           # <-- ensure it’s on the correct device
+            dtype=torch.cfloat
+        )
         out_ft[:, :, :effective_modes] = self.compl_mul1d(
             x_ft[:, :, :effective_modes], 
             self.weights1[:, :, :effective_modes]
@@ -135,7 +141,7 @@ class SpectralConv1d(nn.Module):
 
 
 class FNO1d(nn.Module):
-    def __init__(self, modes, width, depth, device="cpu", nfun=1, padding_frac=1/4):
+    def __init__(self, modes, width, depth, device="cuda", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
         """
         Time-dependent FNO1d network.
@@ -172,7 +178,8 @@ class FNO1d(nn.Module):
         self.fc2 = nn.Linear(128, 1)
         
         self.activation = nn.GELU()
-        self.to(device)
+        self.device = device              # <-- store device
+        self.to(device)                  # <-- move entire model to device
 
     def forward(self, x, t):
         """
@@ -182,6 +189,10 @@ class FNO1d(nn.Module):
         Output:
             [batch_size, 1, spatial_size]
         """
+        # Make sure x, t are on the correct device
+        x = x.to(self.device)            # <-- move input to device
+        t = t.to(self.device)            # <-- move time to device
+        
         # Reshape input for lifting layer
         x = x.permute(0, 2, 1)  # [batch_size, spatial_size, 2]
         
@@ -235,90 +246,37 @@ class FNO1d(nn.Module):
 
 
 def main():
+    # Choose device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    if device.type == 'cuda':
+        print("GPU device:", torch.cuda.get_device_name(0))
+
     torch.manual_seed(0)
     np.random.seed(0)
 
     model_config = {
-        "depth": 6,          # Increase depth
-        "modes": 48,         # More modes for complex dynamics
-        "width": 256         # Wider network
+        "depth": 6,           # Increase depth
+        "modes": 48,          # More modes for complex dynamics
+        "width": 128,         
+        "device": device      # <-- pass device to the model
     }
 
     training_config = {
-        'batch_size': 32,    # Larger batch size
-        'learning_rate': 5e-5, # Lower learning rate
-        'epochs': 1000,      # More epochs
-        'step_size': 300,    # Even longer LR period
+        'batch_size': 32,     
+        'learning_rate': 5e-5,
+        'epochs': 1000,       
+        'step_size': 300,     
         'gamma': 0.5,
-        'patience': 60,      # More patience for convergence
+        'patience': 60,
         'freq_print': 1,
         'training_mode': 'all2all'
     }
 
-    # Direct Inference at multiple timesteps
-    # Average relative L2 error at t=0.25: 36.4949%
-    # Average relative L2 error at t=0.50: 79.6020%
-    # Average relative L2 error at t=0.75: 118.8351%
-    # Average relative L2 error at t=1.00: 170.9276%
-
-    # Auto regressive at multiple timesteps
-    # Average relative L2 error at t=0.25: 36.4949%
-    # Average relative L2 error at t=0.50: 106.4158%
-    # Average relative L2 error at t=0.75: 186.2448%
-    # Average relative L2 error at t=1.00: 301.3198%
-
-    # Testing OOD at t = 1.0
-    # Average relative L2 error on OOD data: 180.3255%
-
-    # model_config = {
-    #     "depth": 4,          # Increase from 2 to 4
-    #     "modes": 32,         # Slight increase
-    #     "width": 128         # Double the width
-    # }
-
-    # training_config = {
-    #     'batch_size': 16,    # Increase from 5
-    #     'learning_rate': 1e-4, # Decrease from 1e-3
-    #     'epochs': 500,       # More epochs
-    #     'step_size': 200,    # Longer learning rate period
-    #     'gamma': 0.5,        # Less aggressive decay
-    #     'patience': 40,      # Shorter patience,
-    #     'freq_print': 1,
-    #     'training_mode': 'all2all'  # or 'one-at-a-time'
-    # }
-
-    # Direct Inference at multiple timesteps
-    # Average relative L2 error at t=0.25: 68.1075%
-    # Average relative L2 error at t=0.50: 111.8394%
-    # Average relative L2 error at t=0.75: 135.1795%
-    # Average relative L2 error at t=1.00: 178.0903%
-
-    # Auto regressive at multiple timesteps
-    # Average relative L2 error at t=0.25: 68.1075%
-    # Average relative L2 error at t=0.50: 237.4745%
-    # Average relative L2 error at t=0.75: 558.5176%
-    # Average relative L2 error at t=1.00: 1327.8747%
-    # model_config = {
-    #     "depth": 2,
-    #     "modes": 30,
-    #     "width": 64
-    # }
-    
-    # training_config = {
-    #     'batch_size': 5,
-    #     'learning_rate': 0.001,
-    #     'epochs': 400,
-    #     'step_size': 100,
-    #     'gamma': 0.1,
-    #     'patience': 50,
-    #     'freq_print': 1,
-    #     'training_mode': 'all2all'  # or 'one-at-a-time'
-    # }
-    
     naming_config = {
         **model_config,
         'learning_rate': training_config['learning_rate'],
-        'training_mode': training_config['training_mode']  # Add to experiment name
+        'training_mode': training_config['training_mode']
     }
     
     experiment_name = get_experiment_name(naming_config)
@@ -329,7 +287,9 @@ def main():
         'model_config': model_config,
         'training_config': training_config
     }
+    save_config(config, checkpoint_dir)
 
+    # Create datasets and dataloaders
     train_dataset = PDEDataset(
         data_path="data/train_sol.npy",
         timesteps=5,
@@ -354,17 +314,18 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=training_config['batch_size'], shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=training_config['batch_size'], shuffle=False)
 
-    model = FNO1d(**model_config)
+    # Instantiate model on the specified device
+    model = FNO1d(**model_config).to(device)  # or model = FNO1d(**model_config)
+
+    # Train model (make sure your train_model function also moves inputs/targets to device)
     trained_model, training_history = train_model(
         model,
         train_loader,
-        val_loader,
+        val_loader, 
         training_config,
-        checkpoint_dir
+        checkpoint_dir,
+        device  # Pass the device to train_model so it can move batches to GPU
     )
-
-    config['training_history'] = training_history
-    save_config(config, checkpoint_dir)
 
     print("Plotting training histories...")
     plot_training_history(experiment_dir=checkpoint_dir)
