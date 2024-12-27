@@ -25,222 +25,157 @@ from training import (
 from visualization import plot_training_history
 
 
+
 class FILM(nn.Module):
-    """
-    Time-conditional normalization layer
-        - Implements time-dependent feature modulation
-        - Combines batch normalization with time-based scaling and shifting
-        - Similar to FiLM (Feature-wise Linear Modulation) but conditioned on time
-    """
     def __init__(self, channels, use_bn=True):
         super(FILM, self).__init__()
         self.channels = channels
         
-        # Scale and bias networks for time conditioning
+        # Simple linear transformations for scale and bias
         self.inp2scale = nn.Linear(1, channels, bias=True)
         self.inp2bias = nn.Linear(1, channels, bias=True)
         
-        # Initialize to identity mapping for stable training
+        # Initialize to identity mapping (very important!)
         self.inp2scale.weight.data.fill_(0)
         self.inp2scale.bias.data.fill_(1)
         self.inp2bias.weight.data.fill_(0)
         self.inp2bias.bias.data.fill_(0)
         
-        # Optional batch normalization
-        if use_bn:
-            self.norm = nn.BatchNorm1d(channels)
-        else:
-            self.norm = nn.Identity()
+        # Use BatchNorm for stability
+        self.norm = nn.BatchNorm1d(channels) if use_bn else nn.Identity()
 
     def forward(self, x, time):
-        """
-        Apply time-conditional normalization to input features.
-        
-        Args:
-            x (torch.Tensor): Input features, shape [B, C, X]
-            time (torch.Tensor): Time conditioning, shape [B]
-            
-        Returns:
-            torch.Tensor: Modulated features, same shape as x
-        """
-        # 1) Apply batch normalization if enabled
+        # x shape: [batch, channels, sequence]
         x = self.norm(x)
         
-        # 2) Process time information
-        #    Move time to the same device as x
-        time = time.reshape(-1, 1).to(x.device)  # <-- ensure same device
-        
-        # 3) Get modulation parameters from time
-        scale = self.inp2scale(time)     # [B, C]
-        bias  = self.inp2bias(time)      # [B, C]
-        
-        # 4) Reshape for broadcasting
-        scale = scale.unsqueeze(-1)      # [B, C, 1]
-        bias  = bias.unsqueeze(-1)       # [B, C, 1]
+        time = time.unsqueeze(1).float()
+        scale = self.inp2scale(time).unsqueeze(-1)
+        bias = self.inp2bias(time).unsqueeze(-1)
         
         return x * scale + bias
 
-
 class SpectralConv1d(nn.Module):
-    """
-    The FNO1d uses SpectralConv1d as its crucial part,
-        - implements the Fourier integral operator in a layer
-        - uses FFT, linear transform, and inverse FFT
-        - modified to work with time-dependent features
-    """
-    def __init__(self, in_channels, out_channels, modes1):
+    def __init__(self, in_channels, out_channels, modes):
         super(SpectralConv1d, self).__init__()
-        if not isinstance(modes1, int) or modes1 <= 0:
-            raise ValueError(f"modes1 must be a positive integer, got {modes1}")
-            
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.modes1 = modes1  # Number of Fourier modes to multiply, at most floor(N/2) + 1
-
+        self.modes = modes
+        
         self.scale = (1 / (in_channels * out_channels))
-        self.weights1 = nn.Parameter(
-            self.scale * torch.rand(in_channels, out_channels, self.modes1, dtype=torch.cfloat)
+        self.weights = nn.Parameter(
+            self.scale * torch.rand(in_channels, out_channels, self.modes, dtype=torch.cfloat)
         )
 
-    def compl_mul1d(self, input, weights):
-        """
-        Complex multiplication in 1D
-        (batch, in_channel, x ), (in_channel, out_channel, x) -> (batch, out_channel, x)
-        """
-        return torch.einsum("bix,iox->box", input, weights)
-    
     def forward(self, x):
-        """
-        Forward pass:
-            1) Compute Fourier coefficients
-            2) Multiply relevant Fourier modes
-            3) Transform back to physical space
-        """
         batchsize = x.shape[0]
-        
-        # Compute Fourier coefficients
         x_ft = torch.fft.rfft(x)
         
-        # Multiply relevant Fourier modes
-        effective_modes = min(self.modes1, x.size(-1) // 2 + 1)
-        out_ft = torch.zeros(
-            batchsize, 
-            self.out_channels, 
-            x.size(-1)//2 + 1, 
-            device=x.device,           # <-- ensure it’s on the correct device
-            dtype=torch.cfloat
-        )
-        out_ft[:, :, :effective_modes] = self.compl_mul1d(
-            x_ft[:, :, :effective_modes], 
-            self.weights1[:, :, :effective_modes]
-        )
+        # Initialize output array
+        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-1)//2 + 1,
+                           dtype=torch.cfloat, device=x.device)
         
-        # Return to physical space
+        # Multiply relevant Fourier modes
+        out_ft[:, :, :self.modes] = torch.einsum("bix,iox->box", 
+                                                x_ft[:, :, :self.modes], 
+                                                self.weights)
+        
         x = torch.fft.irfft(out_ft, n=x.size(-1))
         return x
 
-
 class FNO1d(nn.Module):
-    def __init__(self, modes, width, depth, device="cuda", nfun=1, padding_frac=1/4):
+    def __init__(self, depth, modes, width, device="cuda", nfun=1, padding_frac=1/4):
         super(FNO1d, self).__init__()
-        """
-        Time-dependent FNO1d network.
-        The overall network. It contains [depth] layers of the Fourier layer.
-        1) Lift the input to the desired channel dimension by self.fc0
-        2) [depth] layers of Fourier integral operators with time-conditional normalization
-        3) Project from the channel space to the output space by self.fc1 and self.fc2
-        """
-        self.modes = modes                
-        self.width = width                
-        self.depth = depth                
-        self.padding_frac = padding_frac  
         
-        # Lifting layer (assuming input has shape [B, 2, X] => x, time)
+        self.modes = modes
+        self.width = width
+        self.depth = depth
+        self.padding_frac = padding_frac
+        
+        # Input lifting layer
         self.fc0 = nn.Linear(2, self.width)
+        nn.init.xavier_uniform_(self.fc0.weight)
+        nn.init.zeros_(self.fc0.bias)
         
-        # Fourier integral operator layers
+        # Fourier and conv layers
         self.spectral_list = nn.ModuleList([
-            SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
+            SpectralConv1d(self.width, self.width, self.modes) 
+            for _ in range(self.depth)
         ])
         
-        # Residual layers
         self.w_list = nn.ModuleList([
-            nn.Linear(self.width, self.width, bias=False) for _ in range(self.depth)
+            nn.Conv1d(self.width, self.width, 1) 
+            for _ in range(self.depth)
         ])
         
-        # Time-conditional normalization layers
+        # Initialize conv layers properly
+        for conv in self.w_list:
+            nn.init.xavier_uniform_(conv.weight)
+            nn.init.zeros_(conv.bias)
+        
+        # Time-conditional normalization
         self.film_list = nn.ModuleList([
-            FILM(self.width, use_bn=True) for _ in range(self.depth)
+            FILM(self.width, use_bn=True)  # Enable BatchNorm for stability
+            for _ in range(self.depth)
         ])
         
         # Projection layers
         self.fc1 = nn.Linear(self.width, 128)
-        self.fc2 = nn.Linear(128, 1)
+        self.fc2 = nn.Linear(128, nfun)
+        
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.zeros_(self.fc1.bias)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.zeros_(self.fc2.bias)
         
         self.activation = nn.GELU()
-        self.device = device              # <-- store device
-        self.to(device)                  # <-- move entire model to device
+        self.device = device
+        self.to(device)
 
     def forward(self, x, t):
-        """
-        Input:
-            x: [batch_size, 2, spatial_size]
-            t: [batch_size] or [batch_size, 1]
-        Output:
-            [batch_size, 1, spatial_size]
-        """
-        # Make sure x, t are on the correct device
-        x = x.to(self.device)            # <-- move input to device
-        t = t.to(self.device)            # <-- move time to device
+        x = x.to(self.device)
+        t = t.to(self.device)
         
-        # Reshape input for lifting layer
-        x = x.permute(0, 2, 1)  # [batch_size, spatial_size, 2]
+        # Lift
+        x = x.transpose(1, 2)
+        x = self.fc0(x)
+        x = x.transpose(1, 2)
         
-        # Lifting to higher dimension
-        x = self.fc0(x)        # [batch_size, spatial_size, width]
-        x = x.permute(0, 2, 1) # [batch_size, width, spatial_size]
-        
-        # Padding
+        # Add padding if specified
         x_padding = int(round(x.shape[-1] * self.padding_frac))
-        x = F.pad(x, [0, x_padding])
+        if x_padding > 0:
+            x = F.pad(x, [0, x_padding])
         
-        # Apply the FNO layers
-        for i, (spectral, w_linear, film) in enumerate(zip(self.spectral_list, self.w_list, self.film_list)):
-            x_input = x
+        # Main network backbone
+        for i in range(self.depth):
+            # Fourier layer
+            x1 = self.spectral_list[i](x)
             
-            # Fourier operator
-            x1 = spectral(x)
+            # Residual layer
+            x2 = self.w_list[i](x)
             
-            # Residual connection
-            x2 = w_linear(x_input.transpose(1, 2))  # [B, X, width]
-            x2 = x2.transpose(1, 2)                # [B, width, X]
-            
-            # Combine
+            # Simple residual connection
             x = x1 + x2
             
             # Time-conditional normalization
-            x = film(x, t)
+            x = self.film_list[i](x, t)
             
-            if i != self.depth - 1:
+            if i < self.depth - 1:
                 x = self.activation(x)
         
         # Remove padding
-        x = x[..., :-x_padding]
+        if x_padding > 0:
+            x = x[..., :-x_padding]
         
-        # Projection layers
-        x = x.permute(0, 2, 1)   # [batch_size, spatial_size, width]
+        # Project back to physical space
+        x = x.transpose(1, 2)
+        # x = self.activation(self.fc1(x))
         x = self.fc1(x)
         x = self.fc2(x)
         
-        # Final shape [batch_size, spatial_size, 1] => transpose if you need [B, 1, X]
-        x = x.permute(0, 2, 1)
-        return x
+        return x.transpose(1, 2)
 
     def print_size(self):
-        """Prints the total number of parameters in the model"""
-        nparams = 0
-        for param in self.parameters():
-            nparams += param.numel()
+        nparams = sum(p.numel() for p in self.parameters())
         print(f'Total number of model parameters: {nparams}')
         return nparams
 
@@ -255,22 +190,56 @@ def main():
     torch.manual_seed(0)
     np.random.seed(0)
 
+    # Task 4: Testing on All2All Training:
+    # Average relative L2 error at t=1.00: 50.1759%
+
+    # TODO: Compare error to the one from Task 1.
+
+    # Bonus Task: Evaluate All2All Training on Different Timesteps:
+
+    # Direct Inference at multiple timesteps
+    # Average relative L2 error at t=0.25: 29.2405%
+    # Average relative L2 error at t=0.50: 63.3613%
+    # Average relative L2 error at t=0.75: 61.3682%
+    # Average relative L2 error at t=1.00: 50.1759%
+
+    # Auto regressive at multiple timesteps
+    # Average relative L2 error at t=0.25: 29.2405%
+    # Average relative L2 error at t=0.50: 50.9501%
+    # Average relative L2 error at t=0.75: 64.9494%
+    # Average relative L2 error at t=1.00: 82.7478%
+
+    # Testing OOD at t = 1.0
+    # Average relative L2 error on OOD data: 44.0449%
+
+    # Visualize with heapmap for direct inference
+    # Average relative L2 error at t=0.25: 29.2405%
+    # Average relative L2 error at t=0.50: 63.3613%
+    # Average relative L2 error at t=0.75: 61.3682%
+    # Average relative L2 error at t=1.00: 50.1759%
+    # model_config = {
+    #     "depth": 4,           # Increase depth for better long-term dependencies
+    #     "modes": 96,          # More modes to capture higher frequency components
+    #     "width": 64,         # Wider network for more capacity
+    #     "device": device,
+    # }
     model_config = {
-        "depth": 6,           # Increase depth
-        "modes": 48,          # More modes for complex dynamics
-        "width": 128,         
-        "device": device      # <-- pass device to the model
+        "depth": 3,           # Reduce depth to prevent overfitting
+        "modes": 30,          # Fewer modes since we have limited data
+        "width": 64,         # Narrower network to match data size
+        "device": device,
     }
 
     training_config = {
-        'batch_size': 32,     
-        'learning_rate': 5e-5,
-        'epochs': 1000,       
-        'step_size': 300,     
-        'gamma': 0.5,
-        'patience': 60,
+        'batch_size': 5,
+        'learning_rate': 0.001,    # Slightly lower learning rate
+        'epochs': 2000,           # More epochs since we have patience
+        'weight_decay': 1e-6,     # Stronger regularization
+        'optimizer': 'AdamW',
+        'patience': 200,
         'freq_print': 1,
-        'training_mode': 'all2all'
+        'training_mode': 'all2all',
+        'grad_clip': 0.5          # Tighter gradient clipping
     }
 
     naming_config = {

@@ -298,7 +298,10 @@ def main():
     if not model_path.is_file():
         raise FileNotFoundError(f"No model checkpoint file at: {model_path}")
 
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    # Load checkpoint dictionary
+    checkpoint = torch.load(model_path, map_location=device)
+    # Extract just the model state dict
+    model.load_state_dict(checkpoint['model_state_dict'])  # Changed this line
     model = model.to(device)
     model.eval()
 

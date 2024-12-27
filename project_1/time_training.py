@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+
 from pathlib import Path
 import numpy as np
 import json
@@ -108,42 +110,48 @@ class PDEDataset(Dataset):
 
 
 def train_model(model, training_set, testing_set, config, checkpoint_dir, device):
-    """
-    Model-agnostic training function supporting both training strategies
-
-    Args:
-        model (nn.Module): PyTorch model
-        training_set (DataLoader): DataLoader for the training set
-        testing_set (DataLoader): DataLoader for the validation (or test) set
-        config (dict): training configuration dictionary
-        checkpoint_dir (str or Path): directory to save checkpoints
-        device (torch.device): 'cpu' or 'cuda'
-    """
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+    # Initialize optimizer with weight decay
     optimizer = AdamW(
         model.parameters(),
         lr=config['learning_rate'],
-        weight_decay=1e-4
+        weight_decay=config['weight_decay'],
+        betas=(0.9, 0.999)
     )
 
-    scheduler = torch.optim.lr_scheduler.StepLR(
+    # Use OneCycleLR scheduler instead of StepLR
+    scheduler = OneCycleLR(
         optimizer,
-        step_size=config['step_size'],
-        gamma=config['gamma']
+        max_lr=config['learning_rate'],
+        epochs=config['epochs'],
+        steps_per_epoch=len(training_set),
+        pct_start=0.1,  # 10% warmup
+        anneal_strategy='cos',
+        div_factor=25,   
+        final_div_factor=1e4
     )
 
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss()  # Keep the standard MSE loss
 
     training_history = {
         'train_loss': [],
         'val_loss': [],
+        'lr': [],
         'best_val_loss': float('inf'),
         'best_epoch': 0
     }
+
+    # Load existing config at start
+    try:
+        with open(checkpoint_dir / 'training_config.json', 'r') as f:
+            full_config = json.load(f)
+    except FileNotFoundError:
+        print("No existing config found, creating new one")
+        full_config = {'training_config': config}
 
     for epoch in range(config['epochs']):
         # Training phase
@@ -151,26 +159,24 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
         train_loss_accum = 0.0
         
         for time_batch, input_batch, output_batch in training_set:
-            # Move everything to the device (float32 already)
             time_batch = time_batch.to(device)
             input_batch = input_batch.to(device)
             output_batch = output_batch.to(device)
             
             optimizer.zero_grad()
-            # Forward pass
             output_pred_batch = model(input_batch, time_batch)
-            # Compute loss
             loss = criterion(output_pred_batch, output_batch)
-            # Backprop
             loss.backward()
-            # Gradient clipping (optional, can help training stability)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
+            # Gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=config['grad_clip'])
+            
             optimizer.step()
+            scheduler.step()  # Step per iteration with OneCycleLR
             
             train_loss_accum += loss.item()
         
         train_loss = train_loss_accum / len(training_set)
-        scheduler.step()
 
         # Validation phase
         with torch.no_grad():
@@ -186,10 +192,12 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
                 val_loss_accum += val_loss_batch.item()
 
         val_loss = val_loss_accum / len(testing_set)
+        current_lr = scheduler.get_last_lr()[0]
 
-        # Update history and save best model
+        # Update history
         training_history['train_loss'].append(train_loss)
         training_history['val_loss'].append(val_loss)
+        training_history['lr'].append(current_lr)
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -197,15 +205,16 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
             training_history['best_epoch'] = epoch
             epochs_without_improvement = 0
 
-            torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
+            # Save model checkpoint
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'epoch': epoch,
+                'best_val_loss': best_val_loss
+            }, checkpoint_dir / 'best_model.pth')
 
-            # Save updated training config
-            try:
-                with open(checkpoint_dir / 'training_config.json', 'r') as f:
-                    full_config = json.load(f)
-            except FileNotFoundError:
-                full_config = {'training_config': config}
-
+            # Update and save config
             full_config['training_history'] = training_history
             with open(checkpoint_dir / 'training_config.json', 'w') as f:
                 json.dump(full_config, f, indent=4)
@@ -217,6 +226,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
                 break
 
         if epoch % config['freq_print'] == 0:
-            print(f"Epoch: {epoch}, Train Loss: {train_loss:.6f}, Validation Loss: {val_loss:.6f}")
+            print(f"Epoch: {epoch}, Train Loss: {train_loss:.6f}, "
+                  f"Val Loss: {val_loss:.6f}, LR: {current_lr:.6f}")
 
     return model, training_history
