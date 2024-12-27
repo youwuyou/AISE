@@ -22,51 +22,47 @@ def get_experiment_name(config):
 
 def save_config(config, save_dir):
     """Save configuration to a JSON file"""
+    config_copy = {
+        'model_config': {k: str(v) if isinstance(v, torch.device) else v 
+                        for k, v in config['model_config'].items()},
+        'training_config': {k: str(v) if isinstance(v, torch.device) else v 
+                          for k, v in config['training_config'].items()}
+    }
+    
     with open(save_dir / 'training_config.json', 'w') as f:
-        json.dump(config, f, indent=4)
+        json.dump(config_copy, f, indent=4)
 
-
-def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='fno2d'):
+def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='fno2d', device=None):
     """
     Modified data preparation function that can handle FNO1D format.
-    
-    Args:
-        data_path (str): Path to the data file
-        n_train (int): Number of training samples
-        batch_size (int): Batch size
-        use_library (bool): If True, prepares data in library FNO format
-        model_type (str): Type of FNO model ('fno1d' or 'fno2d')
     """
     data = torch.from_numpy(np.load(data_path)).type(torch.float32)
+    if device:
+        data = data.to(device)
+        
     u_0_all = data[:, 0, :]   # All initial conditions
     u_T_all = data[:, -1, :]  # All output data
     
     if model_type == 'fno1d':
-        # For FNO1D, we only need the initial condition as input
-        # Format: [batch_size, channels=1, spatial_dim]
-        input_function_train = u_0_all[:n_train, :].unsqueeze(1)  # Add channel dimension
-        input_function_test = u_0_all[n_train:, :].unsqueeze(1)   # Add channel dimension
-        
-        # Format outputs similarly
-        output_function_train = u_T_all[:n_train, :].unsqueeze(1)  # Add channel dimension
-        output_function_test = u_T_all[n_train:, :].unsqueeze(1)   # Add channel dimension
+        input_function_train = u_0_all[:n_train, :].unsqueeze(1)  
+        input_function_test = u_0_all[n_train:, :].unsqueeze(1)   
+        output_function_train = u_T_all[:n_train, :].unsqueeze(1)  
+        output_function_test = u_T_all[n_train:, :].unsqueeze(1)   
         
     else:  # Original FNO2D format
-        # Create spatial grid
         x_grid = torch.linspace(0, 1, 64).float()
+        if device:
+            x_grid = x_grid.to(device)
         
         def prepare_input(u0):
             batch_size = u0.shape[0]
             x_grid_expanded = x_grid.expand(batch_size, -1)
             if use_library:
-                # Library format: [batch_size, channels, spatial_dim, 1]
                 input_data = torch.stack((u0, x_grid_expanded), dim=1)
                 return input_data.unsqueeze(-1)
             else:
-                # Custom format: [batch_size, spatial_dim, 2]
                 return torch.stack((u0, x_grid_expanded), dim=-1)
         
-        # Prepare inputs and outputs in original format
         input_function_train = prepare_input(u_0_all[:n_train, :])
         input_function_test = prepare_input(u_0_all[n_train:, :])
         
@@ -77,7 +73,6 @@ def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='
             output_function_train = u_T_all[:n_train, :].unsqueeze(-1)
             output_function_test = u_T_all[n_train:, :].unsqueeze(-1)
     
-    # Create DataLoaders
     training_set = DataLoader(TensorDataset(input_function_train, output_function_train), 
                             batch_size=batch_size, shuffle=True)
     testing_set = DataLoader(TensorDataset(input_function_test, output_function_test), 
@@ -88,15 +83,10 @@ def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='
 def train_model(model, training_set, testing_set, config, checkpoint_dir):
     """
     Model-agnostic training function.
-    
-    Args:
-        model: The model to train
-        training_set: DataLoader for training data
-        testing_set: DataLoader for testing data
-        config: Training configuration parameters
-        checkpoint_dir (str/Path): Directory to save checkpoints
     """    
-    # Create checkpoint directory if it doesn't exist
+    device = config.get('device', torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+    model = model.to(device)
+    
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -119,11 +109,11 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
     }
     
     for epoch in range(config['epochs']):
-        # Training phase
         model.train()
         train_mse = 0.0
         
         for input_batch, output_batch in training_set:
+            input_batch, output_batch = input_batch.to(device), output_batch.to(device)
             optimizer.zero_grad()
             output_pred_batch = model(input_batch)
             loss = criterion(output_pred_batch, output_batch)
@@ -135,31 +125,27 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
         train_mse /= len(training_set)
         scheduler.step()
         
-        # Validation phase
         with torch.no_grad():
             model.eval()
             val_loss = 0.0
             for input_batch, output_batch in testing_set:
+                input_batch, output_batch = input_batch.to(device), output_batch.to(device)
                 output_pred_batch = model(input_batch)
                 loss = criterion(output_pred_batch, output_batch)
                 val_loss += loss.item()
             val_loss /= len(testing_set)
         
-        # Update training history
         training_history['train_loss'].append(train_mse)
         training_history['val_loss'].append(val_loss)
         
-        # Save best model and update history
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             training_history['best_val_loss'] = val_loss
             training_history['best_epoch'] = epoch
             epochs_without_improvement = 0
             
-            # Save model weights
             torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
             
-            # Save training history to training_config.json
             try:
                 with open(checkpoint_dir / 'training_config.json', 'r') as f:
                     full_config = json.load(f)

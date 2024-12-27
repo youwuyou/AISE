@@ -163,7 +163,6 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
     save_dir.mkdir(exist_ok=True)
     
     resolutions = sorted(data_dict.keys())
-    
     model_names = list(models.keys())
     colors = {
         'True': '#000000',
@@ -171,7 +170,6 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
         'Library FNO': '#ff7f0e'
     }
     
-    # Increase figure size and adjust spacing
     fig = plt.figure(figsize=(20, 12))
     gs = fig.add_gridspec(2, 2, hspace=0.4, wspace=0.3)
     axes = [[fig.add_subplot(gs[i, j]) for j in range(2)] for i in range(2)]
@@ -180,22 +178,21 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
     fig.suptitle(title if title else 'Model Prediction Across Resolutions', 
                 fontsize=16, y=0.95, weight='bold')
     
-    # First pass to determine global min/max for consistent y-axis limits
+    # First pass for global min/max
     global_min = float('inf')
     global_max = float('-inf')
     
     for res in resolutions:
         sample_idx = 0
-        true_sol = data_dict[res]['custom'][1][sample_idx].detach()
+        true_sol = data_dict[res]['custom'][1][sample_idx].cpu().detach()
         global_min = min(global_min, true_sol.min().item())
         global_max = max(global_max, true_sol.max().item())
         
         for name in model_names:
-            pred = results_dict[name]['predictions'][res][sample_idx].detach()
+            pred = results_dict[name]['predictions'][res][sample_idx].cpu().detach()
             global_min = min(global_min, pred.min().item())
             global_max = max(global_max, pred.max().item())
     
-    # Add padding to y-axis limits
     y_padding = (global_max - global_min) * 0.15
     y_min = global_min - y_padding
     y_max = global_max + y_padding
@@ -203,54 +200,46 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
     for idx, res in enumerate(resolutions):
         i, j = idx // 2, idx % 2
         sample_idx = 0
-        x_grid = torch.linspace(0, 1, res)
-        true_sol = data_dict[res]['custom'][1][sample_idx].detach()
+        x_grid = torch.linspace(0, 1, res).cpu()
+        true_sol = data_dict[res]['custom'][1][sample_idx].cpu().detach()
         
-        # Plot ground truth
         axes[i, j].plot(x_grid, true_sol,
                        '-', color=colors['True'], 
                        label='Ground Truth', 
                        linewidth=2, 
                        alpha=0.8)
         
-        # Plot model predictions
         for name in model_names:
             error = results_dict[name]['errors'][idx]
-            pred = results_dict[name]['predictions'][res][sample_idx]
+            pred = results_dict[name]['predictions'][res][sample_idx].cpu().detach()
             
             axes[i, j].plot(x_grid, 
-                          pred.detach(),
+                          pred,
                           '--', 
                           color=colors[name],
                           label=f'{name}',
                           linewidth=1.5,
                           alpha=0.8)
             
-            # Adjust marker size and alpha based on resolution
             marker_size = max(3, 15 // (res/32))
             marker_alpha = max(0.2, 0.5 // (res/32))
 
             axes[i, j].scatter(x_grid, 
-                             pred.detach(),
+                             pred,
                              marker='o' if 'Custom' in name else 's',
                              color=colors[name],
                              s=marker_size,
                              alpha=marker_alpha)
         
-        # Enhance subplot styling
         axes[i, j].set_title(f'Resolution: {res} points', pad=10, fontsize=12, weight='bold')
         axes[i, j].grid(True, linestyle='--', alpha=0.3)
         axes[i, j].legend(loc='upper right', framealpha=0.9)
         axes[i, j].set_xlabel('x', fontsize=10)
         axes[i, j].set_ylabel('u(x, t = 1)', fontsize=10)
         
-        # Set consistent y-axis limits across all subplots
         axes[i, j].set_ylim(y_min, y_max)
-        
-        # Set x-axis limits
         axes[i, j].set_xlim(-0.02, 1.02)
         
-        # Enhance grid and spines
         axes[i, j].grid(True, which='major', linestyle='-', alpha=0.2)
         axes[i, j].grid(True, which='minor', linestyle=':', alpha=0.1)
         axes[i, j].minorticks_on()
@@ -258,7 +247,6 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
         for spine in axes[i, j].spines.values():
             spine.set_linewidth(0.8)
             
-        # Add error percentage to title
         error_text = ' '.join([f'{name}: {results_dict[name]["errors"][idx]:.2f}%' 
                              for name in model_names])
         axes[i, j].set_title(f'Resolution: {res} points\n{error_text}', 
