@@ -12,11 +12,6 @@ from pathlib import Path
 from training import train_model, get_experiment_name, save_config, prepare_data
 
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
 class SpectralConv1d(nn.Module):
     """
     The FNO1d uses SpectralConv1d as its crucial part, 
