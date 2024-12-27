@@ -48,4 +48,18 @@ For project reports, experiments were conducted using the hardware & software co
 | Python 3.10.12 | PyTorch 2.5.1 | Garuda Linux x86_64 |
 
 
+## Installation
 
+1. Create and activate virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+.\venv\Scripts\activate  # Windows
+```
+
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
