@@ -1,14 +1,13 @@
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 from pathlib import Path
 import json
 
 from time_custom_fno_1d import FNO1d
 from matplotlib.gridspec import GridSpec
 from time_visualize import (
-    visualize_predictions_heatmap,
-    visualize_predictions,
+    plot_ibvp_sol_heatmap,
+    plot_trajectory_at_time,
     plot_l2_error_by_timestep
 )
 
@@ -139,7 +138,7 @@ def task4_evaluation(model, res_dir):
     
     # Visualize
     test_data = np.load("data/test_sol.npy")
-    visualize_predictions(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory.png")
+    plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory.png")
 
     # Possibly print or compare errors
     print("\n\033[1mTODO: Compare error to the one from Task 1.\033[0m")
@@ -209,12 +208,12 @@ def bonus_task_evaluation(model, res_dir):
 
     # Visualizations
     test_data = np.load("data/test_sol.npy")
-    fig1 = visualize_predictions(predictions1, test_data, res_dir=res_dir, filename="bonus_direct_inference.png")
-    fig2 = visualize_predictions(predictions2, test_data, res_dir=res_dir, filename="bonus_ar_inference.png")
+    fig1 = plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="bonus_direct_inference.png")
+    fig2 = plot_trajectory_at_time(predictions2, test_data, res_dir=res_dir, filename="bonus_ar_inference.png")
 
     # Space-time heatmap
     print("\n\033[1mVisualize with heatmap for direct inference\033[0m")
-    visualize_predictions_heatmap(
+    plot_ibvp_sol_heatmap(
         "data/test_sol.npy",
         model,
         predictions1,

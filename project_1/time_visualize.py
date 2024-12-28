@@ -93,7 +93,7 @@ def plot_l2_error_by_timestep(results: Dict[str, Dict[str, List[float]]],
                 bbox_inches='tight', dpi=300)
     plt.close()
 
-def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
+def plot_ibvp_sol_heatmap(data_path, model, predictions_dict, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
     """
     Visualize multiple trajectories with their predictions in a grid and save the figure.
     Initial condition line plot is now colored using the same colormap as heatmaps.
@@ -250,11 +250,11 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
         ax4.set_box_aspect(1)
 
     plt.tight_layout()
-    save_path = res_dir / "predictions_heatmap.png"
+    save_path = res_dir / "ibvp_sol_heatmap.png"
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
 
-def visualize_predictions(predictions_dict, data, test_idx=0, res_dir=None, figsize=(15, 10), filename="predictions_over_time.png"):
+def plot_trajectory_at_time(predictions_dict, data, test_idx=0, res_dir=None, figsize=(15, 10), filename="predictions_over_time.png"):
     """
     Visualize predictions at different timesteps and save the figure.
 

@@ -13,7 +13,6 @@ from pathlib import Path
 from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 
-# Make sure these imports point to your own local files
 from time_training import (
    PDEDataset,
    train_model
@@ -21,7 +20,6 @@ from time_training import (
 from training import (
    get_experiment_name,
    save_config,
-#    train_model_time
 )
 from visualization import plot_training_history
 from custom_fno_1d import SpectralConv1d
@@ -66,25 +64,16 @@ class FNO1d(nn.Module):
         
         # Input lifting layer
         self.fc0 = nn.Linear(nfun + 1, self.width)
-        nn.init.xavier_uniform_(self.fc0.weight)
-        nn.init.zeros_(self.fc0.bias)
         
         # Fourier and conv layers
         self.spectral_list = nn.ModuleList([
-            SpectralConv1d(self.width, self.width, self.modes) 
-            for _ in range(self.depth)
+            SpectralConv1d(self.width, self.width, self.modes) for _ in range(self.depth)
         ])
         
         self.w_list = nn.ModuleList([
-            nn.Conv1d(self.width, self.width, 1)
-            for _ in range(self.depth)
+            nn.Conv1d(self.width, self.width, 1) for _ in range(self.depth)
         ])
-        
-        # Initialize conv layers properly
-        for conv in self.w_list:
-            nn.init.xavier_uniform_(conv.weight)
-            nn.init.zeros_(conv.bias)
-        
+                
         # Time-conditional normalization
         self.film_list = nn.ModuleList([
             FILM(self.width, use_bn=True)  # Enable BatchNorm for stability
@@ -94,12 +83,7 @@ class FNO1d(nn.Module):
         # Projection layers
         self.fc1 = nn.Linear(self.width, 128)
         self.fc2 = nn.Linear(128, nfun)
-        
-        nn.init.xavier_uniform_(self.fc1.weight)
-        nn.init.zeros_(self.fc1.bias)
-        nn.init.xavier_uniform_(self.fc2.weight)
-        nn.init.zeros_(self.fc2.bias)
-        
+                
         self.activation = nn.GELU()
         self.device = device
         self.to(device)
