@@ -15,7 +15,9 @@ class PDEDataset(Dataset):
                  timesteps=5,
                  which="training",
                  training_samples=64,
-                 training_mode="all2all"):
+                 training_mode="all2all",
+                 val_split=0.5    # Default to 50-50 split for train/val
+                 ):
         """
         PDE Dataset with support for both all2all and one-at-a-time training strategies
         
@@ -25,6 +27,7 @@ class PDEDataset(Dataset):
             which: One of "training", "validation", or "test"
             training_samples: Number of training trajectories to use
             training_mode: Either "all2all" or "one-at-a-time"
+            val_split: Fraction of data to use for validation
         """
         # Force data to float32 upon loading
         self.data = np.load(data_path).astype(np.float32)
@@ -45,25 +48,26 @@ class PDEDataset(Dataset):
         
         self.len_times = len(self.time_pairs)
         
-        # Dataset size constants adjusted for actual data size
-        self.N_max = 128 * self.len_times
-        self.n_val = 32 * self.len_times
-        self.n_test = 32 * self.len_times
+        # Calculate dataset splits based on actual data size
+        total_trajectories = self.data.shape[0]
+        val_size = int(total_trajectories * val_split)
+        train_size = total_trajectories - val_size
         
-        # Set dataset specific parameters
+        print(f"Dataset split (trajectories): train={train_size}, val={val_size}")
+        
+        # Set dataset specific parameters based on which split is requested
         if which == "training":
-            self.length = min(training_samples * self.len_times, (128 - 64) * self.len_times)
+            self.length = min(training_samples, train_size) * self.len_times
             self.start = 0
         elif which == "validation":
-            self.length = self.n_val
-            self.start = (self.N_max - self.n_val - self.n_test) // self.len_times * self.len_times
+            self.length = val_size * self.len_times
+            self.start = train_size * self.len_times
         elif which == "test":
-            self.length = self.n_test
-            self.start = (self.N_max - self.n_test) // self.len_times * self.len_times
-            
-        # Normalization constants
-        self.mean = 0.0
-        self.std = 0.3835
+            # For test data, use all trajectories
+            self.length = total_trajectories * self.len_times
+            self.start = 0
+        
+        print(f"Using {self.length // self.len_times} trajectories for {which}")
 
     def __len__(self):
         return self.length
@@ -89,12 +93,11 @@ class PDEDataset(Dataset):
         assert t_out > t_inp, "Time ordering violated"
         
         # Compute normalized time difference
-        # Using torch.tensor(...) to keep it in float32
         time = torch.tensor((t_out - t_inp) * 0.2, dtype=torch.float32)
         
-        # Get and normalize input
+        # Get input
         inp_np = self.data[sample_idx, t_inp].reshape(1, 64)  # shape [1, 64]
-        inputs = (torch.from_numpy(inp_np) - self.mean) / self.std
+        inputs = torch.from_numpy(inp_np)
         
         # Create time channel
         time_channel = torch.ones_like(inputs) * time  # shape [1, 64]
@@ -102,9 +105,9 @@ class PDEDataset(Dataset):
         # Combine spatial and time channels => shape [2, 64]
         inputs = torch.cat([inputs, time_channel], dim=0)
         
-        # Get and normalize output
+        # Get output
         out_np = self.data[sample_idx, t_out].reshape(1, 64)  # shape [1, 64]
-        outputs = (torch.from_numpy(out_np) - self.mean) / self.std
+        outputs = torch.from_numpy(out_np)
         
         return time, inputs, outputs
 
@@ -121,7 +124,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
         betas=(0.9, 0.999)
     )
 
-    # Use OneCycleLR scheduler instead of StepLR
+    # Use OneCycleLR scheduler
     scheduler = OneCycleLR(
         optimizer,
         max_lr=config['learning_rate'],
@@ -135,7 +138,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
 
     best_val_loss = float('inf')
     epochs_without_improvement = 0
-    criterion = nn.MSELoss()  # Keep the standard MSE loss
+    criterion = nn.MSELoss()
 
     training_history = {
         'train_loss': [],

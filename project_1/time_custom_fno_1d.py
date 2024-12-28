@@ -15,16 +15,16 @@ import matplotlib.pyplot as plt
 
 # Make sure these imports point to your own local files
 from time_training import (
-    PDEDataset, 
-    train_model
+   PDEDataset,
+   train_model
 )
 from training import (
-    get_experiment_name,
-    save_config
+   get_experiment_name,
+   save_config,
+#    train_model_time
 )
 from visualization import plot_training_history
-
-
+from custom_fno_1d import SpectralConv1d
 
 class FILM(nn.Module):
     def __init__(self, channels, use_bn=True):
@@ -54,33 +54,6 @@ class FILM(nn.Module):
         
         return x * scale + bias
 
-class SpectralConv1d(nn.Module):
-    def __init__(self, in_channels, out_channels, modes):
-        super(SpectralConv1d, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.modes = modes
-        
-        self.scale = (1 / (in_channels * out_channels))
-        self.weights = nn.Parameter(
-            self.scale * torch.rand(in_channels, out_channels, self.modes, dtype=torch.cfloat)
-        )
-
-    def forward(self, x):
-        batchsize = x.shape[0]
-        x_ft = torch.fft.rfft(x)
-        
-        # Initialize output array
-        out_ft = torch.zeros(batchsize, self.out_channels, x.size(-1)//2 + 1,
-                           dtype=torch.cfloat, device=x.device)
-        
-        # Multiply relevant Fourier modes
-        out_ft[:, :, :self.modes] = torch.einsum("bix,iox->box", 
-                                                x_ft[:, :, :self.modes], 
-                                                self.weights)
-        
-        x = torch.fft.irfft(out_ft, n=x.size(-1))
-        return x
 
 class FNO1d(nn.Module):
     def __init__(self, depth, modes, width, device="cuda", nfun=1, padding_frac=1/4):
@@ -92,7 +65,7 @@ class FNO1d(nn.Module):
         self.padding_frac = padding_frac
         
         # Input lifting layer
-        self.fc0 = nn.Linear(2, self.width)
+        self.fc0 = nn.Linear(nfun + 1, self.width)
         nn.init.xavier_uniform_(self.fc0.weight)
         nn.init.zeros_(self.fc0.bias)
         
@@ -103,7 +76,7 @@ class FNO1d(nn.Module):
         ])
         
         self.w_list = nn.ModuleList([
-            nn.Conv1d(self.width, self.width, 1) 
+            nn.Conv1d(self.width, self.width, 1)
             for _ in range(self.depth)
         ])
         
@@ -168,7 +141,6 @@ class FNO1d(nn.Module):
         
         # Project back to physical space
         x = x.transpose(1, 2)
-        # x = self.activation(self.fc1(x))
         x = self.fc1(x)
         x = self.fc2(x)
         
@@ -179,129 +151,80 @@ class FNO1d(nn.Module):
         print(f'Total number of model parameters: {nparams}')
         return nparams
 
-
 def main():
-    # Choose device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Set device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
-    if device.type == 'cuda':
+    print("CUDA available:", torch.cuda.is_available())
+    if torch.cuda.is_available():
         print("GPU device:", torch.cuda.get_device_name(0))
 
+    # Set random seeds
     torch.manual_seed(0)
     np.random.seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(0)
 
-    # Task 4: Testing on All2All Training:
-    # Average relative L2 error at t=1.00: 50.1759%
-
-    # TODO: Compare error to the one from Task 1.
-
-    # Bonus Task: Evaluate All2All Training on Different Timesteps:
-
-    # Direct Inference at multiple timesteps
-    # Average relative L2 error at t=0.25: 29.2405%
-    # Average relative L2 error at t=0.50: 63.3613%
-    # Average relative L2 error at t=0.75: 61.3682%
-    # Average relative L2 error at t=1.00: 50.1759%
-
-    # Auto regressive at multiple timesteps
-    # Average relative L2 error at t=0.25: 29.2405%
-    # Average relative L2 error at t=0.50: 50.9501%
-    # Average relative L2 error at t=0.75: 64.9494%
-    # Average relative L2 error at t=1.00: 82.7478%
-
-    # Testing OOD at t = 1.0
-    # Average relative L2 error on OOD data: 44.0449%
-
-    # Visualize with heapmap for direct inference
-    # Average relative L2 error at t=0.25: 29.2405%
-    # Average relative L2 error at t=0.50: 63.3613%
-    # Average relative L2 error at t=0.75: 61.3682%
-    # Average relative L2 error at t=1.00: 50.1759%
-    # model_config = {
-    #     "depth": 4,           # Increase depth for better long-term dependencies
-    #     "modes": 96,          # More modes to capture higher frequency components
-    #     "width": 64,         # Wider network for more capacity
-    #     "device": device,
-    # }
     model_config = {
-        "depth": 3,           # Reduce depth to prevent overfitting
-        "modes": 30,          # Fewer modes since we have limited data
-        "width": 64,         # Narrower network to match data size
-        "device": device,
+        "depth": 4,
+        "modes": 30,
+        "width": 32,
     }
 
     training_config = {
         'batch_size': 5,
-        'learning_rate': 0.001,    # Slightly lower learning rate
-        'epochs': 2000,           # More epochs since we have patience
-        'weight_decay': 1e-6,     # Stronger regularization
+        'learning_rate': 0.001,
+        'epochs': 400,
+        'step_size': 100,
+        'gamma': 0.5,
+        'weight_decay': 1e-6,
         'optimizer': 'AdamW',
-        'patience': 200,
+        'patience': 40,
         'freq_print': 1,
         'training_mode': 'all2all',
-        'grad_clip': 0.5          # Tighter gradient clipping
+        'grad_clip': 0.5,
+        'device': device
     }
 
+    # Add experiment naming configuration
     naming_config = {
         **model_config,
         'learning_rate': training_config['learning_rate'],
         'training_mode': training_config['training_mode']
     }
-    
+
+    # Create experiment-specific directory
     experiment_name = get_experiment_name(naming_config)
     checkpoint_dir = Path("checkpoints/custom_fno/time") / experiment_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # Save complete configuration
     config = {
         'model_config': model_config,
         'training_config': training_config
     }
     save_config(config, checkpoint_dir)
 
-    # Create datasets and dataloaders
-    train_dataset = PDEDataset(
-        data_path="data/train_sol.npy",
-        timesteps=5,
-        which="training",
-        training_samples=64,
-        training_mode=training_config['training_mode']
-    )
-    val_dataset = PDEDataset(
-        data_path="data/train_sol.npy",
-        timesteps=5,
-        which="validation",
-        training_mode=training_config['training_mode']
-    )
-    test_dataset = PDEDataset(
-        data_path="data/train_sol.npy",
-        timesteps=5,
-        which="test",
-        training_mode=training_config['training_mode']
-    )
-    
+    # Setup data and model
+    model = FNO1d(**model_config)
+    train_dataset = PDEDataset(data_path="data/train_sol.npy", which="training")
+    val_dataset = PDEDataset(data_path="data/train_sol.npy", which="validation")
+
     train_loader = DataLoader(train_dataset, batch_size=training_config['batch_size'], shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=training_config['batch_size'], shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=training_config['batch_size'], shuffle=False)
 
-    # Instantiate model on the specified device
-    model = FNO1d(**model_config).to(device)  # or model = FNO1d(**model_config)
-
-    # Train model (make sure your train_model function also moves inputs/targets to device)
-    trained_model, training_history = train_model(
-        model,
-        train_loader,
-        val_loader, 
-        training_config,
-        checkpoint_dir,
-        device  # Pass the device to train_model so it can move batches to GPU
+    # Use time-specific training function
+    trained_model, history = train_model(
+    model=model,
+    training_set=train_loader,
+    testing_set=val_loader,
+    config=training_config,
+    checkpoint_dir=checkpoint_dir,
+    device=device
     )
 
-    print("Plotting training histories...")
-    plot_training_history(experiment_dir=checkpoint_dir)
-
-    print(f"Time-dependent FNO training completed. Model saved in {checkpoint_dir}")
-    print(f"Best validation loss: {training_history['best_val_loss']:.6f} "
-          f"at epoch {training_history['best_epoch']}")
+    print(f"Training completed. Best validation loss: {history['best_val_loss']:.6f} "
+            f"at epoch {history['best_epoch']}")
 
 if __name__ == "__main__":
-    main()
+   main()

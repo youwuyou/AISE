@@ -1,23 +1,102 @@
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
+from matplotlib.collections import LineCollection
 from scipy.interpolate import RegularGridInterpolator
 from pathlib import Path
 import numpy as np
+from typing import Dict, List, Optional
 
-
+def plot_l2_error_by_timestep(results: Dict[str, Dict[str, List[float]]], 
+                             timesteps: List[float],
+                             save_dir: Path,
+                             title: Optional[str] = None) -> None:
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True)
+    
+    fig, ax = plt.subplots(figsize=(12, 7))
+    
+    colors = {
+        'AR': 'dodgerblue',
+        'Direct': 'red'
+    }
+    
+    ax.grid(True, linestyle='--', alpha=0.2, which='both')
+    ax.set_axisbelow(True)
+    
+    # Plot lines and markers for each model
+    for i, (model_name, model_results) in enumerate(results.items()):
+        line = ax.plot(timesteps, 
+                      model_results['errors'],
+                      '-',
+                      label=model_name,
+                      color=colors[model_name],
+                      linewidth=2.5,
+                      zorder=3)
+        
+        ax.plot(timesteps,
+                model_results['errors'],
+                'o',
+                color=colors[model_name],
+                markersize=10,
+                markeredgewidth=2,
+                markeredgecolor='white',
+                zorder=4)
+        
+        ax.plot(timesteps,
+                model_results['errors'],
+                'o',
+                color=colors[model_name],
+                markersize=6,
+                zorder=5)
+        
+        for j, (x, y) in enumerate(zip(timesteps, model_results['errors'])):
+            y_offset = 10 if i == 0 or j != len(timesteps) - 1 else -20
+            
+            bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
+            ax.annotate(f'{y:.2f}%', 
+                       (x, y),
+                       textcoords="offset points",
+                       xytext=(0, y_offset),
+                       ha='center',
+                       va='bottom' if y_offset > 0 else 'top',
+                       fontsize=10,
+                       bbox=bbox_props,
+                       zorder=6)
+    
+    ax.set_xlabel('Time', fontsize=12, labelpad=10)
+    ax.set_ylabel('Average Relative L2 Error (%)', fontsize=12, labelpad=10)
+    ax.set_title(title if title else 'Test Error Across Time (s = 64)', 
+                 fontsize=14, 
+                 pad=20,
+                 weight='bold')
+    
+    ax.set_xticks(timesteps)
+    ax.set_xticklabels([f'{t:.2f}' for t in timesteps], fontsize=10)
+    
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+    
+    ymin = min(min(r['errors']) for r in results.values())
+    ymax = max(max(r['errors']) for r in results.values())
+    padding = (ymax - ymin) * 0.1
+    ax.set_ylim(ymin - padding * 2, ymax + padding * 3)
+    
+    legend = ax.legend(loc='upper right',
+                      frameon=True,
+                      framealpha=0.95,
+                      edgecolor='gray',
+                      fancybox=True,
+                      fontsize=10)
+    legend.get_frame().set_linewidth(0.5)
+    
+    plt.savefig(save_dir / 'l2_error_timestep_comparison.png', 
+                bbox_inches='tight', dpi=300)
+    plt.close()
 
 def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
     """
     Visualize multiple trajectories with their predictions in a grid and save the figure.
-
-    Args:
-        data_path: Path to the data file
-        model: Trained model
-        predictions_dict: Dictionary of predictions at different times
-        trajectory_indices: List/array of trajectory indices (valid range: 0-127)
-        res_dir: Directory to save the plots
-        figsize: Figure size (default adjusted for better aspect ratio)
-        n_interp_points: Number of interpolation points for smooth visualization
+    Initial condition line plot is now colored using the same colormap as heatmaps.
     """
     res_dir = Path(res_dir)
     res_dir.mkdir(parents=True, exist_ok=True)
@@ -72,26 +151,47 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
         Z_fine_errors.append(Z_fine_error)
         max_error = max(max_error, Z_fine_error.max())
 
+    # Create colormap for line plots
+    cmap = plt.cm.coolwarm
+
     # Plot trajectories
     for idx_pos, (traj_idx, Z_fine_error) in enumerate(zip(trajectory_indices, Z_fine_errors)):
         # Create row with adjusted width ratios
+        width = 0.5
         inner_grid = GridSpecFromSubplotSpec(1, 4,
                                            subplot_spec=outer_grid[idx_pos],
-                                           width_ratios=[0.8, 1, 1, 1],
-                                           wspace=0.3)
+                                           width_ratios=[width, width, width, width],
+                                           wspace=0.1)
 
-        # 1. Initial condition with adjusted aspect ratio
+        # 1. Initial condition with colored line
         ax1 = fig.add_subplot(inner_grid[0])
-        ax1.plot(x_orig, data[traj_idx, 0], 'b-', lw=2)
+        
+        # Get initial condition values
+        y = data[traj_idx, 0]
+        
+        # Normalize values to [0, 1] for colormap
+        norm = plt.Normalize(data[traj_idx].min(), data[traj_idx].max())
+        
+        # Create colored line segments
+        points = np.array([x_orig, y]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(segments, cmap=cmap, norm=norm)
+        lc.set_array(y)
+        lc.set_linewidth(2)
+        
+        # Add colored line to plot
+        line = ax1.add_collection(lc)
+        plt.colorbar(line, ax=ax1)
+        
+        ax1.set_xlim(x_orig.min(), x_orig.max())
+        ax1.set_ylim(y.min(), y.max())
         ax1.set_xlabel('x')
-        ax1.set_ylabel('u')
+        ax1.set_ylabel('u(x, t = 0)')
         ax1.set_title(f'Initial Condition\n(Trajectory {traj_idx})')
         ax1.grid(True, which="both", ls=":")
-
-        # Set aspect ratio to be more square
         ax1.set_box_aspect(1)
 
-        # 2. Exact solution with adjusted colormap
+        # 2. Exact solution
         ax2 = fig.add_subplot(inner_grid[1])
         interp_func = RegularGridInterpolator((t_orig, x_orig), data[traj_idx],
                                             method='cubic',
@@ -104,7 +204,7 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
 
         im2 = ax2.pcolormesh(X_fine, T_fine, Z_fine_exact,
                             shading='auto',
-                            cmap='RdYlBu',
+                            cmap=cmap,
                             vmin=data[traj_idx].min(),
                             vmax=data[traj_idx].max())
         plt.colorbar(im2, ax=ax2)
@@ -127,7 +227,7 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
 
         im3 = ax3.pcolormesh(X_fine, T_fine, Z_fine_pred,
                             shading='auto',
-                            cmap='RdYlBu',
+                            cmap=cmap,
                             vmin=data[traj_idx].min(),
                             vmax=data[traj_idx].max())
         plt.colorbar(im3, ax=ax3)
@@ -140,7 +240,7 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
         ax4 = fig.add_subplot(inner_grid[3])
         im4 = ax4.pcolormesh(X_fine, T_fine, Z_fine_error,
                             shading='auto',
-                            cmap='RdYlBu',
+                            cmap=cmap,
                             vmin=0,
                             vmax=max_error)
         plt.colorbar(im4, ax=ax4)
@@ -153,7 +253,6 @@ def visualize_predictions_heatmap(data_path, model, predictions_dict, trajectory
     save_path = res_dir / "predictions_heatmap.png"
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
-
 
 def visualize_predictions(predictions_dict, data, test_idx=0, res_dir=None, figsize=(15, 10), filename="predictions_over_time.png"):
     """

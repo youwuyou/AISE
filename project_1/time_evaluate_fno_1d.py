@@ -8,148 +8,123 @@ from time_custom_fno_1d import FNO1d
 from matplotlib.gridspec import GridSpec
 from time_visualize import (
     visualize_predictions_heatmap,
-    visualize_predictions
+    visualize_predictions,
+    plot_l2_error_by_timestep
 )
 
+from enum import Enum, auto
+
+class InferenceStrategy(Enum):
+    DIRECT = "direct"
+    AUTOREGRESSIVE = "autoregressive"
+
 def evaluate_model(model,
-                   data_path, 
-                   time_strategy="single",
-                   timesteps=[0.25, 0.50, 0.75, 1.0],
-                   autoregressive=False,
-                   mean=0, 
-                   std=0.3835):
-    """[Keep original docstring]"""
-    # Load data and set model in eval mode
-    device = next(model.parameters()).device  # Get model's device
+                  data_path, 
+                  strategy: InferenceStrategy,
+                  t_i: list,  # List of time points [t_0, t_1, ..., t_n]
+                  normalize=False,
+                  mean=0, 
+                  std=0.3835):
+    """
+    Evaluate model using specified inference strategy.
+    
+    Args:
+        model: The FNO model to evaluate
+        data_path: Path to the data file
+        strategy: InferenceStrategy.DIRECT or InferenceStrategy.AUTOREGRESSIVE
+        t_i: List of time points [t_0, t_1, ..., t_n] where t_0 is initial time
+        normalize: Whether to normalize the data (default: True)
+        mean: Mean for normalization if enabled (default: 0)
+        std: Standard deviation for normalization if enabled (default: 0.3835)
+    """
+    device = next(model.parameters()).device
     data = np.load(data_path)
     model.eval()
     
-    # Get initial conditions
+    # Get initial conditions at t_0
     initial_conditions = data[:, 0]
     n_test = len(initial_conditions)
     
-    # Initialize storage
     predictions_dict = {}
     errors_dict = {}
-    current_conditions = torch.from_numpy(initial_conditions).float().to(device)
-    current_time = 0.0
+    
+    def normalize_data(x):
+        return (x - mean) / std if normalize else x
+    
+    def denormalize_data(x):
+        return x * std + mean if normalize else x
     
     with torch.no_grad():
-        if not autoregressive:
-            # Direct prediction at each timestep
-            for t_val in timesteps:
+        if strategy == InferenceStrategy.DIRECT:
+            target_times = t_i[1:]  # Exclude t_0
+            
+            for t_target in target_times:
                 predictions = np.zeros_like(initial_conditions)
                 relative_l2_errors = np.zeros(n_test)
                 
                 for i in range(n_test):
-                    # Prepare input
+                    # Initial condition u_0
                     x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
-                    x = (x - mean) / std
+                    x = normalize_data(x)
                     
-                    # Add time channel
-                    t_channel = torch.ones_like(x) * t_val
+                    # Direct inference to target time
+                    t_channel = torch.ones_like(x) * t_target
                     x = torch.cat([x, t_channel], dim=1)
+                    t = torch.tensor([t_target]).float().reshape(1).to(device)
                     
-                    # Get prediction
-                    t = torch.tensor([t_val]).float().reshape(1).to(device)
                     pred = model(x, t)
-                    
-                    # Move to CPU and denormalize prediction
-                    pred = pred.cpu().squeeze().numpy() * std + mean
+                    pred = denormalize_data(pred.cpu().squeeze().numpy())
                     predictions[i] = pred
                     
                     # Compute error
-                    true_idx = int(t_val * (data.shape[1] - 1))
+                    true_idx = int(t_target * (data.shape[1] - 1))
                     ground_truth = data[i, true_idx]
                     error = np.linalg.norm(pred - ground_truth) / np.linalg.norm(ground_truth)
                     relative_l2_errors[i] = error * 100
                 
-                # Store results
-                predictions_dict[t_val] = predictions
-                errors_dict[t_val] = np.mean(relative_l2_errors)
-                print(f"Average relative L2 error at t={t_val:.2f}: {errors_dict[t_val]:.4f}%")
+                predictions_dict[t_target] = predictions
+                errors_dict[t_target] = np.mean(relative_l2_errors)
+                print(f"Direct inference - Average relative L2 error at t_{t_i.index(t_target)} = {t_target:.2f}: {errors_dict[t_target]:.4f}%")
         
-        else:
-            # Autoregressive prediction
-            predictions_dict[0.0] = current_conditions.cpu().numpy()
+        else:  # AUTOREGRESSIVE
+            current_conditions = torch.from_numpy(initial_conditions).float().to(device)
+            predictions_dict[t_i[0]] = current_conditions.cpu().numpy()
             
-            for dt in timesteps:
-                current_time += dt
+            for i in range(len(t_i) - 1):
+                t_current, t_next = t_i[i], t_i[i+1]
+                dt = t_next - t_current
                 next_predictions = torch.zeros_like(current_conditions)
                 
-                for i in range(n_test):
-                    # Prepare input
-                    x = current_conditions[i].reshape(1, 1, -1)
-                    x = (x - mean) / std
+                for j in range(n_test):
+                    x = current_conditions[j].reshape(1, 1, -1)
+                    x = normalize_data(x)
                     
-                    # Add time channel
                     t_channel = torch.ones_like(x) * dt
                     x = torch.cat([x, t_channel], dim=1)
-                    
-                    # Get prediction
                     t = torch.tensor([dt]).float().reshape(1).to(device)
+                    
                     pred = model(x, t)
-                    
-                    # Move to CPU and denormalize prediction
-                    pred = pred.cpu().squeeze() * std + mean
-                    next_predictions[i] = pred
+                    pred = denormalize_data(pred.cpu().squeeze())
+                    next_predictions[j] = pred
                 
-                # Store predictions
-                predictions_dict[current_time] = next_predictions.cpu().numpy()
+                predictions_dict[t_next] = next_predictions.cpu().numpy()
                 
-                # Compute errors if ground truth is available
-                try:
-                    true_idx = int(current_time * (data.shape[1] - 1))
-                    ground_truth = data[:, true_idx]
-                    
-                    relative_l2_errors = np.zeros(n_test)
-                    for i in range(n_test):
-                        error = np.linalg.norm(
-                            next_predictions[i].cpu().numpy() - ground_truth[i]
-                        ) / np.linalg.norm(ground_truth[i])
-                        relative_l2_errors[i] = error * 100
-                    
-                    errors_dict[current_time] = np.mean(relative_l2_errors)
-                    print(f"Average relative L2 error at t={current_time:.2f}: {errors_dict[current_time]:.4f}%")
-                except IndexError:
-                    print(f"No ground truth available for t={current_time:.2f}")
+                true_idx = int(t_next * (data.shape[1] - 1))
+                ground_truth = data[:, true_idx]
                 
-                # Update current conditions for next step
+                relative_l2_errors = np.zeros(n_test)
+                for j in range(n_test):
+                    error = np.linalg.norm(
+                        next_predictions[j].cpu().numpy() - ground_truth[j]
+                    ) / np.linalg.norm(ground_truth[j])
+                    relative_l2_errors[j] = error * 100
+                
+                errors_dict[t_next] = np.mean(relative_l2_errors)
+                print(f"Autoregressive - Average relative L2 error at t_{i+1} = {t_next:.2f}: {errors_dict[t_next]:.4f}%")
+                
                 current_conditions = next_predictions
     
     return predictions_dict, errors_dict
-
-def evaluate_ood(model, data_path="data/test_sol_OOD.npy", mean=0, std=0.3835):
-    """[Keep original docstring]"""
-    device = next(model.parameters()).device  # Get model's device
-    ood_data = np.load(data_path)
-    model.eval()
-    
-    initial_conditions = ood_data[:, 0]
-    final_solutions = ood_data[:, -1]
-    n_test = len(initial_conditions)
-    
-    predictions = np.zeros_like(final_solutions)
-    relative_l2_errors = np.zeros(n_test)
-    
-    with torch.no_grad():
-        for i in range(n_test):
-            x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
-            x = (x - mean) / std
-            t_channel = torch.ones_like(x)
-            x = torch.cat([x, t_channel], dim=1)
-            t = torch.tensor([1.0]).float().reshape(1).to(device)
-            
-            pred = model(x, t)
-            pred = pred.cpu().squeeze().numpy() * std + mean
-            predictions[i] = pred
-            
-            error = np.linalg.norm(pred - final_solutions[i]) / np.linalg.norm(final_solutions[i])
-            relative_l2_errors[i] = error * 100
-    
-    avg_error = np.mean(relative_l2_errors)
-    print(f"Average relative L2 error on OOD data: {avg_error:.4f}%")
-    return avg_error, predictions, final_solutions
 
 
 def task4_evaluation(model, res_dir):
@@ -165,13 +140,17 @@ def task4_evaluation(model, res_dir):
     """
     print("\n\033[1mTask 4: Testing on All2All Training:\033[0m")
 
-    # 4. Evaluate at t = 1.0
+    # Define time points for evaluation (only t=0 and t=1)
+    t_i = [0.0, 1.0]
+
+    # 4. Evaluate at t = 1.0 using direct inference
     predictions1, errors1 = evaluate_model(
         model,
         data_path="data/test_sol.npy",
-        autoregressive=False,
-        timesteps=[1.0]
+        strategy=InferenceStrategy.DIRECT,
+        t_i=t_i
     )
+    
     # Visualize
     test_data = np.load("data/test_sol.npy")
     visualize_predictions(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory.png")
@@ -193,65 +172,71 @@ def bonus_task_evaluation(model, res_dir):
     """
     print("\n\033[1mBonus Task: Evaluate All2All Training on Different Timesteps:\033[0m")
     
+    # Define time points t_i
+    t_i = [0.0, 0.25, 0.50, 0.75, 1.0]  # t_0 through t_4
+    
     # 1. Direct prediction at multiple timesteps
     print("\n\033[1mDirect Inference at multiple timesteps\033[0m")
     predictions1, errors1 = evaluate_model(
         model,
         data_path="data/test_sol.npy",
-        autoregressive=False,
-        timesteps=[0.25, 0.50, 0.75, 1.0]
+        strategy=InferenceStrategy.DIRECT,
+        t_i=t_i
     )
 
-    # 2. Autoregressive with smaller steps (4 steps of 0.25 => 1.0 total)
-    print("\n\033[1mAuto regressive at multiple timesteps\033[0m")
+    # 2. Autoregressive prediction
+    print("\n\033[1mAutoregressive Inference\033[0m")
     predictions2, errors2 = evaluate_model(
         model,
         data_path="data/test_sol.npy",
-        autoregressive=True,
-        timesteps=[0.25, 0.25, 0.25, 0.25]
+        strategy=InferenceStrategy.AUTOREGRESSIVE,
+        t_i=t_i
     )
 
-    # 3. Visualize and compare
+    # 3. Visualize and compare AR vs Direct
+    print("\n\033[1mPlotting Average Relative L2 Error Across Time\033[0m")
+    results = {
+        'Direct': {'errors': list(errors1.values())},
+        'AR': {'errors': list(errors2.values())}
+    }
+    plot_l2_error_by_timestep(results, t_i[1:], res_dir)  # Exclude t_0
+
+    # 4. OOD Evaluation - Print results for both methods
+    print("\n\033[1mTesting OOD Performance:\033[0m")
+    # OOD Direct
+    print("\nDirect Inference on OOD data:")
+    ood_direct_pred, ood_direct_errors = evaluate_model(
+        model,
+        data_path="data/test_sol_OOD.npy",
+        strategy=InferenceStrategy.DIRECT,
+        t_i=[0.0, 1.0]  # Only initial and final time
+    )
+    
+    # OOD Autoregressive
+    print("\nAutoregressive Inference on OOD data:")
+    ood_ar_pred, ood_ar_errors = evaluate_model(
+        model,
+        data_path="data/test_sol_OOD.npy",
+        strategy=InferenceStrategy.AUTOREGRESSIVE,
+        t_i=t_i  # Full sequence of time points
+    )
+
+    # Visualizations
     test_data = np.load("data/test_sol.npy")
     fig1 = visualize_predictions(predictions1, test_data, res_dir=res_dir, filename="bonus_direct_inference.png")
     fig2 = visualize_predictions(predictions2, test_data, res_dir=res_dir, filename="bonus_ar_inference.png")
 
-    # 4. Compare errors
-    plt.figure(figsize=(10, 5))
-    plt.plot(list(errors1.keys()), list(errors1.values()), 'b-o', label='Direct')
-    plt.plot(list(errors2.keys()), list(errors2.values()), 'r-o', label='Autoregressive')
-    plt.xlabel('Time')
-    plt.ylabel('Relative L2 Error (%)')
-    plt.title('Error Comparison: Direct vs. Autoregressive')
-    plt.grid(True)
-    plt.legend()
-    plt.savefig(res_dir / 'error_comparison.png')
-    plt.close()
-
-    # 5. Evaluate on OOD
-    print("\n\033[1mTesting OOD at t = 1.0\033[0m")
-    ood_error, ood_predictions, ood_truth = evaluate_ood(model)
-
-    # 6. Space-time heatmap
+    # Space-time heatmap
     print("\n\033[1mVisualize with heapmap for direct inference\033[0m")
-    timesteps = [0.25, 0.50, 0.75, 1.0]
-    predictions_dict, _ = evaluate_model(
-        model, 
-        data_path="data/test_sol.npy",
-        autoregressive=False,
-        timesteps=timesteps
-    )
     visualize_predictions_heatmap(
         "data/test_sol.npy",
         model,
-        predictions_dict,
-        trajectory_indices=[0, 2, 3, 4],
+        predictions1,
+        trajectory_indices=[0, 127],
         res_dir=res_dir,
         figsize=(24, 5)
     )
-    
-    return predictions1, predictions2, predictions_dict
-
+    return predictions1, predictions2
 
 
 def main():
