@@ -10,10 +10,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from pathlib import Path
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 import matplotlib.pyplot as plt
 
 from time_training import (
+   TrajectorySubset,
    PDEDataset,
    train_model
 )
@@ -29,26 +30,45 @@ class FILM(nn.Module):
         super(FILM, self).__init__()
         self.channels = channels
         
-        # Simple linear transformations for scale and bias
-        self.inp2scale = nn.Linear(1, channels, bias=True)
-        self.inp2bias = nn.Linear(1, channels, bias=True)
+        # Enhanced linear transformations with intermediate layer
+        self.inp2scale = nn.Sequential(
+            nn.Linear(1, channels * 2),
+            nn.GELU(),
+            nn.Linear(channels * 2, channels),
+        )
+        self.inp2bias = nn.Sequential(
+            nn.Linear(1, channels * 2),
+            nn.GELU(),
+            nn.Linear(channels * 2, channels),
+        )
         
-        # Initialize to identity mapping (very important!)
-        self.inp2scale.weight.data.fill_(0)
-        self.inp2scale.bias.data.fill_(1)
-        self.inp2bias.weight.data.fill_(0)
-        self.inp2bias.bias.data.fill_(0)
+        # Initialize to identity mapping
+        for module in self.inp2scale.modules():
+            if isinstance(module, nn.Linear):
+                last_layer = module
+        last_layer.weight.data.fill_(0)
+        last_layer.bias.data.fill_(1)
         
-        # Use BatchNorm for stability
-        self.norm = nn.BatchNorm1d(channels) if use_bn else nn.Identity()
+        for module in self.inp2bias.modules():
+            if isinstance(module, nn.Linear):
+                last_layer = module
+        last_layer.weight.data.fill_(0)
+        last_layer.bias.data.fill_(0)
+        
+        # Use both BatchNorm and LayerNorm for better stability
+        self.bn = nn.BatchNorm1d(channels) if use_bn else nn.Identity()
+        self.ln = nn.LayerNorm([channels])
 
-    def forward(self, x, time):
+    def forward(self, x, Δt):
         # x shape: [batch, channels, sequence]
-        x = self.norm(x)
+        x = self.bn(x)
+        x = x.permute(0, 2, 1)  # [batch, sequence, channels]
+        x = self.ln(x)
+        x = x.permute(0, 2, 1)  # [batch, channels, sequence]
         
-        time = time.unsqueeze(1).float()
-        scale = self.inp2scale(time).unsqueeze(-1)
-        bias = self.inp2bias(time).unsqueeze(-1)
+        Δt = Δt.unsqueeze(1).float()
+        scale = self.inp2scale(Δt).unsqueeze(-1)
+        bias = self.inp2bias(Δt).unsqueeze(-1)
         
         return x * scale + bias
 
@@ -62,8 +82,12 @@ class FNO1d(nn.Module):
         self.depth = depth
         self.padding_frac = padding_frac
         
-        # Input lifting layer
-        self.fc0 = nn.Linear(nfun + 1, self.width)
+        # Enhanced input lifting layer
+        self.fc0 = nn.Sequential(
+            nn.Linear(nfun + 1, width * 2),
+            nn.GELU(),
+            nn.Linear(width * 2, width)
+        )
         
         # Fourier and conv layers
         self.spectral_list = nn.ModuleList([
@@ -76,15 +100,19 @@ class FNO1d(nn.Module):
                 
         # Time-conditional normalization
         self.film_list = nn.ModuleList([
-            FILM(self.width, use_bn=True)  # Enable BatchNorm for stability
-            for _ in range(self.depth)
+            FILM(self.width, use_bn=True) for _ in range(self.depth)
         ])
         
-        # Projection layers
-        self.fc1 = nn.Linear(self.width, 128)
+        # Enhanced projection layers
+        self.fc1 = nn.Sequential(
+            nn.Linear(self.width, 256),
+            nn.GELU(),
+            nn.Linear(256, 128)
+        )
         self.fc2 = nn.Linear(128, nfun)
                 
         self.activation = nn.GELU()
+
         self.device = device
         self.to(device)
 
@@ -92,26 +120,28 @@ class FNO1d(nn.Module):
         x = x.to(self.device)
         t = t.to(self.device)
         
-        # Lift
-        x = x.transpose(1, 2)
+        # Lift the input
+        x = x.permute(0, 2, 1)
         x = self.fc0(x)
-        x = x.transpose(1, 2)
+        x = x.permute(0, 2, 1)
         
         # Add padding if specified
         x_padding = int(round(x.shape[-1] * self.padding_frac))
         if x_padding > 0:
-            x = F.pad(x, [0, x_padding])
+            x = F.pad(x, [0, x_padding], mode='reflect')
         
-        # Main network backbone
+        # Main network backbone with enhanced residual connections
         for i in range(self.depth):
+            x_input = x
+            
             # Fourier layer
             x1 = self.spectral_list[i](x)
             
             # Residual layer
             x2 = self.w_list[i](x)
             
-            # Simple residual connection
-            x = x1 + x2
+            # Enhanced residual connection with scaling
+            x = x1 + x2 + 0.1 * x_input
             
             # Time-conditional normalization
             x = self.film_list[i](x, t)
@@ -124,16 +154,19 @@ class FNO1d(nn.Module):
             x = x[..., :-x_padding]
         
         # Project back to physical space
-        x = x.transpose(1, 2)
+        x = x.permute(0, 2, 1)
         x = self.fc1(x)
         x = self.activation(x)
         x = self.fc2(x)
-        return x.transpose(1, 2)
-
+        x = x.permute(0, 2, 1)
+        
+        return x
+        
     def print_size(self):
         nparams = sum(p.numel() for p in self.parameters())
         print(f'Total number of model parameters: {nparams}')
         return nparams
+
 def main():
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -148,24 +181,63 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed(0)
 
+    training_mode = 'vanilla'
+    # Task 4: Testing on Vanilla Training:
+    # Direct inference - Average relative L2 error at t_1 = 0.25: 26.2301%
+    # Direct inference - Average relative L2 error at t_2 = 0.50: 33.3457%
+    # Direct inference - Average relative L2 error at t_3 = 0.75: 37.0793%
+    # Direct inference - Average relative L2 error at t_4 = 1.00: 39.7440%
+    # Autoregressive - Average relative L2 error at t_1 = 0.50: 33.3457%
+    # Autoregressive - Average relative L2 error at t_2 = 1.00: 129.6974%
+
+    # TODO: Compare error to the one from Task 1.
+
+    # Bonus Task: Evaluate Vanilla Training on Different Timesteps:
+
+    # Direct Inference at multiple timesteps
+    # Direct inference - Average relative L2 error at t_1 = 0.25: 26.2301%
+    # Direct inference - Average relative L2 error at t_2 = 0.50: 33.3457%
+    # Direct inference - Average relative L2 error at t_3 = 0.75: 37.0793%
+    # Direct inference - Average relative L2 error at t_4 = 1.00: 39.7440%
+
+    # Autoregressive Inference
+    # Autoregressive - Average relative L2 error at t_1 = 0.25: 26.2301%
+    # Autoregressive - Average relative L2 error at t_2 = 0.50: 70.2454%
+    # Autoregressive - Average relative L2 error at t_3 = 0.75: 127.4491%
+    # Autoregressive - Average relative L2 error at t_4 = 1.00: 207.6183%
+
+    # Plotting Average Relative L2 Error Across Time
+
+    # Testing OOD Performance:
+
+    # Direct Inference on OOD data:
+    # Direct inference - Average relative L2 error at t_1 = 1.00: 51.1273%
+
+    # Autoregressive Inference on OOD data:
+    # Autoregressive - Average relative L2 error at t_1 = 0.25: 41.8220%
+    # Autoregressive - Average relative L2 error at t_2 = 0.50: 40.6845%
+    # Autoregressive - Average relative L2 error at t_3 = 0.75: 46.0933%
+    # Autoregressive - Average relative L2 error at t_4 = 1.00: 174.2444%
+
+
     model_config = {
         "depth": 4,
         "modes": 30,
-        "width": 32,
+        "width": 64,
     }
 
     training_config = {
-        'batch_size': 5,
+        'batch_size': 16,
         'learning_rate': 0.001,
         'epochs': 400,
         'step_size': 100,
-        'gamma': 0.5,
-        'weight_decay': 1e-6,
+        'gamma': 0.1,
+        'weight_decay': 1e-4,
         'optimizer': 'AdamW',
         'patience': 40,
+        'grad_clip': 1.0,
+        'training_mode': training_mode,
         'freq_print': 1,
-        'training_mode': 'all2all',
-        'grad_clip': 0.5,
         'device': device
     }
 
@@ -188,38 +260,41 @@ def main():
     }
     save_config(config, checkpoint_dir)
 
-    # Setup data and model
+    # Setup model
     model = FNO1d(**model_config)
     
-    # Create dataset with debugging
+    # Create dataset
     dataset = PDEDataset(
         data_path="data/train_sol.npy",
         training_samples=64,
-        training_mode="all2all",
-        total_time=1.0  # Make sure this matches your PDE setup
+        training_mode=training_mode,
+        total_time=1.0
     )
-    
-    # Debug a sample batch
-    dataset.debug_batch(batch_size=5)
-    
-    # Get samplers for training and validation
-    train_sampler, val_sampler = dataset.get_train_val_samplers()
 
-    # Create DataLoaders with reduced workers
+    # Prepare train/validation splits at trajectory level
+    train_trajectories, val_trajectories = dataset.prepare_splits(random_seed=0)
+    
+    # Report dataset statistics
+    dataset.report_statistics()
+    
+    # Create train and validation subsets
+    train_dataset = TrajectorySubset(dataset, train_trajectories)
+    val_dataset = TrajectorySubset(dataset, val_trajectories)
+    
+    # Create DataLoaders
     train_loader = DataLoader(
-        dataset,
+        train_dataset,
         batch_size=training_config['batch_size'],
-        sampler=train_sampler,
-        num_workers=1  # Reduced to avoid warnings
+        shuffle=True,
+        num_workers=1
     )
 
     val_loader = DataLoader(
-        dataset,
+        val_dataset,
         batch_size=training_config['batch_size'],
-        sampler=val_sampler,
+        shuffle=False,
         num_workers=1
     )
-    
     # Debug first batch from training loader
     print("\nDebugging first training batch:")
     first_batch = next(iter(train_loader))
@@ -227,9 +302,9 @@ def main():
     print(f"Time batch shape: {time_batch.shape}")
     print(f"Time differences: {time_batch}")
     print(f"Input batch shape: {input_batch.shape}")
-    print(f"Output batch shape: {output_batch.shape}")    
+    print(f"Output batch shape: {output_batch.shape}")
 
-    # Use time-specific training function
+    # Train the model
     trained_model, history = train_model(
         model=model,
         training_set=train_loader,

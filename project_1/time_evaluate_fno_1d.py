@@ -20,7 +20,8 @@ class InferenceStrategy(Enum):
 def evaluate_model(model,
                   data_path, 
                   strategy: InferenceStrategy,
-                  t_i: list):  # List of time points [t_0, t_1, ..., t_n]
+                  t_i: list,
+                  t_tot: float = 1.0):
     """
     Evaluate model using specified inference strategy.
     
@@ -34,9 +35,9 @@ def evaluate_model(model,
     data = np.load(data_path)
     model.eval()
     
-    # Get initial conditions at t_0
-    initial_conditions = data[:, 0]
-    n_test = len(initial_conditions)
+    # Get initial conditions at t = 0
+    u_0 = data[:, 0, :]
+    n_traj = len(u_0)
     
     predictions_dict = {}
     errors_dict = {}
@@ -46,71 +47,77 @@ def evaluate_model(model,
             target_times = t_i[1:]  # Exclude t_0
             
             for t_target in target_times:
-                predictions = np.zeros_like(initial_conditions)
-                relative_l2_errors = np.zeros(n_test)
-                
-                for i in range(n_test):
-                    # Initial condition u_0
-                    x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
+                predictions = np.zeros_like(u_0)
+                relative_l2_errors = np.zeros(n_traj)
+
+                for i in range(n_traj):
+                    # Create input tensor with current state and time difference
+                    state = torch.from_numpy(u_0[i]).float().unsqueeze(0)  # [1, 64]
+                    time_diff = torch.full_like(state, t_target)  # [1, 64]
+                    x = torch.stack([state, time_diff], dim=1)  # [1, 2, 64]
+                    x = x.to(device)
                     
                     # Direct inference to target time
-                    t_channel = torch.ones_like(x) * t_target
-                    x = torch.cat([x, t_channel], dim=1)
-                    t = torch.tensor([t_target]).float().reshape(1).to(device)
-                    
-                    pred = model(x, t)
-                    pred = pred.cpu().squeeze().numpy()
-                    predictions[i] = pred
+                    t = torch.tensor([t_target]).float().to(device)
+                    u_pred = model(x, t)
+                    u_pred = u_pred.cpu().squeeze().numpy()
+                    predictions[i] = u_pred
                     
                     # Compute error
-                    true_idx = int(t_target * (data.shape[1] - 1))
-                    ground_truth = data[i, true_idx]
-                    error = np.linalg.norm(pred - ground_truth) / np.linalg.norm(ground_truth)
-                    relative_l2_errors[i] = error * 100
+                    if t_target > t_tot:
+                        raise ValueError("t_target {t_target} > t_tot {t_tot} not supported by dataset at {data_path}")
+
+                    training_dt = t_tot / (data.shape[1] - 1)
+                    time_idx = int(t_target // training_dt)
+
+                    u_true = data[i, time_idx]
+                    error = np.linalg.norm(u_pred - u_true) / np.linalg.norm(u_true)
+                    relative_l2_errors[i] = error
                 
                 predictions_dict[t_target] = predictions
-                errors_dict[t_target] = np.mean(relative_l2_errors)
+                errors_dict[t_target] = np.mean(relative_l2_errors) * 100
                 print(f"Direct inference - Average relative L2 error at t_{t_i.index(t_target)} = {t_target:.2f}: {errors_dict[t_target]:.4f}%")
         
         else:  # AUTOREGRESSIVE
-            current_conditions = torch.from_numpy(initial_conditions).float().to(device)
-            predictions_dict[t_i[0]] = current_conditions.cpu().numpy()
+            current_states = torch.from_numpy(u_0).float()  # [n_traj, 64]
+            predictions_dict[t_i[0]] = current_states.cpu().numpy()
             
             for i in range(len(t_i) - 1):
                 t_current, t_next = t_i[i], t_i[i+1]
                 dt = t_next - t_current
-                next_predictions = torch.zeros_like(current_conditions)
+                next_predictions = torch.zeros_like(current_states)
                 
-                for j in range(n_test):
-                    x = current_conditions[j].reshape(1, 1, -1)
+                for j in range(n_traj):
+                    # Create input tensor with current state and time difference
+                    state = current_states[j].unsqueeze(0)  # [1, 64]
+                    time_diff = torch.full_like(state, dt)  # [1, 64]
+                    x = torch.stack([state, time_diff], dim=1)  # [1, 2, 64]
+                    x = x.to(device)
                     
-                    t_channel = torch.ones_like(x) * dt
-                    x = torch.cat([x, t_channel], dim=1)
-                    t = torch.tensor([dt]).float().reshape(1).to(device)
-                    
-                    pred = model(x, t)
-                    pred = pred.cpu().squeeze()
-                    next_predictions[j] = pred
+                    t = torch.tensor([dt]).float().to(device)
+
+                    u_pred = model(x, t)
+                    u_pred = u_pred.cpu().squeeze()
+                    next_predictions[j] = u_pred
                 
                 predictions_dict[t_next] = next_predictions.cpu().numpy()
                 
-                true_idx = int(t_next * (data.shape[1] - 1))
-                ground_truth = data[:, true_idx]
+                time_idx = int(t_next * (data.shape[1] - 1))
+                u_true = data[:, time_idx]
                 
-                relative_l2_errors = np.zeros(n_test)
-                for j in range(n_test):
+                relative_l2_errors = np.zeros(n_traj)
+                for j in range(n_traj):
                     error = np.linalg.norm(
-                        next_predictions[j].cpu().numpy() - ground_truth[j]
-                    ) / np.linalg.norm(ground_truth[j])
-                    relative_l2_errors[j] = error * 100
+                        next_predictions[j].cpu().numpy() - u_true[j]
+                    ) / np.linalg.norm(u_true[j])
+                    relative_l2_errors[j] = error
                 
-                errors_dict[t_next] = np.mean(relative_l2_errors)
+                errors_dict[t_next] = np.mean(relative_l2_errors) * 100
                 print(f"Autoregressive - Average relative L2 error at t_{i+1} = {t_next:.2f}: {errors_dict[t_next]:.4f}%")
                 
-                current_conditions = next_predictions
+                current_states = next_predictions
     
     return predictions_dict, errors_dict
-
 
 def task4_evaluation(model, res_dir):
     """
@@ -126,19 +133,29 @@ def task4_evaluation(model, res_dir):
     print("\n\033[1mTask 4: Testing on All2All Training:\033[0m")
 
     # Define time points for evaluation (only t=0 and t=1)
-    t_i = [0.0, 1.0]
+    t_i = [0.0, 0.25, 0.5, 0.75, 1.0]
 
-    # 4. Evaluate at t = 1.0 using direct inference
+    # 4.1 Evaluate at t = 1.0 using direct inference
     predictions1, errors1 = evaluate_model(
         model,
         data_path="data/test_sol.npy",
         strategy=InferenceStrategy.DIRECT,
         t_i=t_i
     )
-    
+
+    # 4.2 Evaluate at t = 1.0 using autoregressive inference
+    predictions2, errors2 = evaluate_model(
+        model,
+        data_path="data/test_sol.npy",
+        strategy=InferenceStrategy.AUTOREGRESSIVE,
+        t_i=[0.0, 0.5, 1.0]
+    )
+
+
     # Visualize
     test_data = np.load("data/test_sol.npy")
-    plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory.png")
+    plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory_direct.png")
+    plot_trajectory_at_time(predictions2, test_data, res_dir=res_dir, filename="task4_trajectory_ar.png")
 
     # Possibly print or compare errors
     print("\n\033[1mTODO: Compare error to the one from Task 1.\033[0m")
