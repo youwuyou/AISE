@@ -126,15 +126,14 @@ class FNO1d(nn.Module):
         # Project back to physical space
         x = x.transpose(1, 2)
         x = self.fc1(x)
+        x = self.activation(x)
         x = self.fc2(x)
-        
         return x.transpose(1, 2)
 
     def print_size(self):
         nparams = sum(p.numel() for p in self.parameters())
         print(f'Total number of model parameters: {nparams}')
         return nparams
-
 def main():
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -191,24 +190,57 @@ def main():
 
     # Setup data and model
     model = FNO1d(**model_config)
-    train_dataset = PDEDataset(data_path="data/train_sol.npy", which="training")
-    val_dataset = PDEDataset(data_path="data/train_sol.npy", which="validation")
+    
+    # Create dataset with debugging
+    dataset = PDEDataset(
+        data_path="data/train_sol.npy",
+        training_samples=64,
+        training_mode="all2all",
+        total_time=1.0  # Make sure this matches your PDE setup
+    )
+    
+    # Debug a sample batch
+    dataset.debug_batch(batch_size=5)
+    
+    # Get samplers for training and validation
+    train_sampler, val_sampler = dataset.get_train_val_samplers()
 
-    train_loader = DataLoader(train_dataset, batch_size=training_config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=training_config['batch_size'], shuffle=False)
+    # Create DataLoaders with reduced workers
+    train_loader = DataLoader(
+        dataset,
+        batch_size=training_config['batch_size'],
+        sampler=train_sampler,
+        num_workers=1  # Reduced to avoid warnings
+    )
+
+    val_loader = DataLoader(
+        dataset,
+        batch_size=training_config['batch_size'],
+        sampler=val_sampler,
+        num_workers=1
+    )
+    
+    # Debug first batch from training loader
+    print("\nDebugging first training batch:")
+    first_batch = next(iter(train_loader))
+    time_batch, input_batch, output_batch = first_batch
+    print(f"Time batch shape: {time_batch.shape}")
+    print(f"Time differences: {time_batch}")
+    print(f"Input batch shape: {input_batch.shape}")
+    print(f"Output batch shape: {output_batch.shape}")    
 
     # Use time-specific training function
     trained_model, history = train_model(
-    model=model,
-    training_set=train_loader,
-    testing_set=val_loader,
-    config=training_config,
-    checkpoint_dir=checkpoint_dir,
-    device=device
+        model=model,
+        training_set=train_loader,
+        validation_set=val_loader,
+        config=training_config,
+        checkpoint_dir=checkpoint_dir,
+        device=device
     )
 
     print(f"Training completed. Best validation loss: {history['best_val_loss']:.6f} "
-            f"at epoch {history['best_epoch']}")
+          f"at epoch {history['best_epoch']}")
 
 if __name__ == "__main__":
-   main()
+    main()

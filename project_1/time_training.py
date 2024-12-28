@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
-
 from pathlib import Path
 import numpy as np
 import json
@@ -12,107 +11,111 @@ import json
 class PDEDataset(Dataset):
     def __init__(self,
                  data_path="data/train_sol.npy",
-                 timesteps=5,
-                 which="training",
+                 total_time=1.0,
                  training_samples=64,
-                 training_mode="all2all",
-                 val_split=0.5    # Default to 50-50 split for train/val
-                 ):
+                 training_mode="all2all"):
         """
-        PDE Dataset with support for both all2all and one-at-a-time training strategies
-        
-        Args:
-            data_path: Path to the data file
-            timesteps: Number of time steps in the data (5 for this dataset)
-            which: One of "training", "validation", or "test"
-            training_samples: Number of training trajectories to use
-            training_mode: Either "all2all" or "one-at-a-time"
-            val_split: Fraction of data to use for validation
+        PDE Dataset with enhanced debugging for time pairs.
         """
-        # Force data to float32 upon loading
         self.data = np.load(data_path).astype(np.float32)
-        self.T = timesteps
+        self.total_trajectories = self.data.shape[0]
+        
+        assert self.total_trajectories >= 2 * training_samples, \
+            f"Not enough trajectories ({self.total_trajectories}) for requested training samples ({training_samples})"
+        
+        self.train_size = training_samples
+        self.val_size = training_samples
+        
+        self.timesteps = self.data.shape[1]
+        self.dt = total_time / (self.timesteps - 1)
         self.training_mode = training_mode
-        
-        # Time pairs based on training mode
-        if training_mode == "all2all":
-            self.time_pairs = [
-                (i, j) for i in range(0, self.T) for j in range(i + 1, self.T)
-            ]
-            print(f"Using all2all training with {len(self.time_pairs)} pairs per trajectory (O(k²))")
-        else:  # one-at-a-time
-            self.time_pairs = [
-                (i, i+1) for i in range(0, self.T-1)
-            ]
-            print(f"Using one-at-a-time training with {len(self.time_pairs)} pairs per trajectory (O(k))")
-        
-        self.len_times = len(self.time_pairs)
-        
-        # Calculate dataset splits based on actual data size
-        total_trajectories = self.data.shape[0]
-        val_size = int(total_trajectories * val_split)
-        train_size = total_trajectories - val_size
-        
-        print(f"Dataset split (trajectories): train={train_size}, val={val_size}")
-        
-        # Set dataset specific parameters based on which split is requested
-        if which == "training":
-            self.length = min(training_samples, train_size) * self.len_times
-            self.start = 0
-        elif which == "validation":
-            self.length = val_size * self.len_times
-            self.start = train_size * self.len_times
-        elif which == "test":
-            # For test data, use all trajectories
-            self.length = total_trajectories * self.len_times
-            self.start = 0
-        
-        print(f"Using {self.length // self.len_times} trajectories for {which}")
 
-    def __len__(self):
-        return self.length
+        # Enhanced time pairs generation with debugging
+        if training_mode == "all2all":
+            self.time_pairs = [(i, j) for i in range(0, self.timesteps) for j in range(i, self.timesteps)]
+            print(f"\nall2all mode: using {len(self.time_pairs)} pairs starting from t0")
+            # time_pairs: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (1, 2), (1, 3), (1, 4), (2, 2), (2, 3), (2, 4), (3, 3), (3, 4), (4, 4)]
+                    
+            # Print detailed time pair information
+            print("\nTime pairs analysis:")
+            print(f"Number of timesteps: {self.timesteps}")
+            print(f"Total time: {total_time}")
+            print(f"Time step size (dt): {self.dt}")
+            print(f"Number of time pairs per trajectory: {len(self.time_pairs)}")
+            print("\nExample time differences:")
+            for i, (t_inp, t_out) in enumerate(self.time_pairs):
+                time_diff = (t_out - t_inp) * self.dt
+                print(f"Pair {i}: (t{t_inp}, t{t_out}) → Δt = {time_diff:.4f}")
+                if i >= 9:  # Show first 10 pairs only
+                    print("...")
+                    break
+                    
+        elif training_mode == "vanilla":
+            self.time_pairs = [(0, i) for i in range(self.timesteps)]
+            print(f"\nVanilla mode: using {len(self.time_pairs)} pairs starting from t0")
+            # time_pairs: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)]
+        else:
+            raise ValueError("Training strategy not implemented. Available strategies are 'all2all' or 'vanilla'.")
+
+        print(f"time_pairs: {self.time_pairs}")
+        self.len_times = len(self.time_pairs)
+        self.train_length = self.train_size * self.len_times
+        self.val_length = self.val_size * self.len_times
 
     def __getitem__(self, index):
         """
-        Get a single sample from the dataset
-        
-        Returns:
-            time (torch.float32): [scalar] normalized time difference
-            inputs (torch.float32): [2, 64] with (spatial + time)
-            outputs (torch.float32): [1, 64] PDE solution
+        Enhanced __getitem__ with time pair debugging.
         """
-        # Get trajectory and time pair indices
-        sample_idx = index // self.len_times + self.start // self.len_times
+        is_validation = index >= self.train_length
+        
+        if is_validation:
+            adjusted_index = index - self.train_length
+            sample_idx = (adjusted_index // self.len_times) + self.train_size
+        else:
+            sample_idx = index // self.len_times
+            
         time_pair_idx = index % self.len_times
+        t_inp, t_out = self.time_pairs[time_pair_idx]        
+        time = torch.tensor((t_out - t_inp) * self.dt, dtype=torch.float32)
         
-        # Ensure we don't exceed data bounds
-        sample_idx = min(sample_idx, self.data.shape[0] - 1)
-        
-        # Get input and output time points
-        t_inp, t_out = self.time_pairs[time_pair_idx]
-        assert t_out > t_inp, "Time ordering violated"
-        
-        # Compute normalized time difference
-        time = torch.tensor((t_out - t_inp) * 0.2, dtype=torch.float32)
-        
-        # Get input
-        inp_np = self.data[sample_idx, t_inp].reshape(1, 64)  # shape [1, 64]
+        # Get input and output data
+        inp_np = self.data[sample_idx, t_inp].reshape(1, 64)
         inputs = torch.from_numpy(inp_np)
-        
-        # Create time channel
-        time_channel = torch.ones_like(inputs) * time  # shape [1, 64]
-        
-        # Combine spatial and time channels => shape [2, 64]
+        time_channel = torch.ones_like(inputs) * time
         inputs = torch.cat([inputs, time_channel], dim=0)
         
-        # Get output
-        out_np = self.data[sample_idx, t_out].reshape(1, 64)  # shape [1, 64]
+        out_np = self.data[sample_idx, t_out].reshape(1, 64)
         outputs = torch.from_numpy(out_np)
-        
+
         return time, inputs, outputs
 
+    def debug_batch(self, batch_size=5):
+        """
+        Helper method to debug a sample batch.
+        """
+        indices = np.random.choice(self.train_length, batch_size, replace=False)
+        print("\nDebugging sample batch:")
+        for idx in indices:
+            time, inputs, outputs = self.__getitem__(idx)
+            sample_idx = idx // self.len_times
+            time_pair_idx = idx % self.len_times
+            t_inp, t_out = self.time_pairs[time_pair_idx]
+            print(f"Index {idx}: trajectory {sample_idx}, (t{t_inp}, t{t_out}) → Δt = {time.item():.4f}")
 
-def train_model(model, training_set, testing_set, config, checkpoint_dir, device):
+    def get_train_val_samplers(self):
+        """
+        Returns samplers for training and validation splits.
+        Useful for creating DataLoaders.
+        """
+        train_indices = range(0, self.train_length)
+        val_indices = range(self.train_length, self.train_length + self.val_length)
+        
+        train_sampler = SubsetRandomSampler(train_indices)
+        val_sampler = SubsetRandomSampler(val_indices)
+        
+        return train_sampler, val_sampler
+
+def train_model(model, training_set, validation_set, config, checkpoint_dir, device):
     checkpoint_dir = Path(checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
@@ -162,6 +165,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
         train_loss_accum = 0.0
         
         for time_batch, input_batch, output_batch in training_set:
+            # print(f"Training Time_batch: {time_batch}")
             time_batch = time_batch.to(device)
             input_batch = input_batch.to(device)
             output_batch = output_batch.to(device)
@@ -185,16 +189,17 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir, device
         with torch.no_grad():
             model.eval()
             val_loss_accum = 0.0
-            for time_batch, input_batch, output_batch in testing_set:
+            for time_batch, input_batch, output_batch in validation_set:
                 time_batch = time_batch.to(device)
                 input_batch = input_batch.to(device)
                 output_batch = output_batch.to(device)
-                
+                # print(f"Time_batch: {time_batch}")
+
                 output_pred_batch = model(input_batch, time_batch)
                 val_loss_batch = criterion(output_pred_batch, output_batch)
                 val_loss_accum += val_loss_batch.item()
 
-        val_loss = val_loss_accum / len(testing_set)
+        val_loss = val_loss_accum / len(validation_set)
         current_lr = scheduler.get_last_lr()[0]
 
         # Update history
