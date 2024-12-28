@@ -21,10 +21,7 @@ class InferenceStrategy(Enum):
 def evaluate_model(model,
                   data_path, 
                   strategy: InferenceStrategy,
-                  t_i: list,  # List of time points [t_0, t_1, ..., t_n]
-                  normalize=False,
-                  mean=0, 
-                  std=0.3835):
+                  t_i: list):  # List of time points [t_0, t_1, ..., t_n]
     """
     Evaluate model using specified inference strategy.
     
@@ -33,9 +30,6 @@ def evaluate_model(model,
         data_path: Path to the data file
         strategy: InferenceStrategy.DIRECT or InferenceStrategy.AUTOREGRESSIVE
         t_i: List of time points [t_0, t_1, ..., t_n] where t_0 is initial time
-        normalize: Whether to normalize the data (default: True)
-        mean: Mean for normalization if enabled (default: 0)
-        std: Standard deviation for normalization if enabled (default: 0.3835)
     """
     device = next(model.parameters()).device
     data = np.load(data_path)
@@ -48,12 +42,6 @@ def evaluate_model(model,
     predictions_dict = {}
     errors_dict = {}
     
-    def normalize_data(x):
-        return (x - mean) / std if normalize else x
-    
-    def denormalize_data(x):
-        return x * std + mean if normalize else x
-    
     with torch.no_grad():
         if strategy == InferenceStrategy.DIRECT:
             target_times = t_i[1:]  # Exclude t_0
@@ -65,7 +53,6 @@ def evaluate_model(model,
                 for i in range(n_test):
                     # Initial condition u_0
                     x = torch.from_numpy(initial_conditions[i]).float().reshape(1, 1, -1).to(device)
-                    x = normalize_data(x)
                     
                     # Direct inference to target time
                     t_channel = torch.ones_like(x) * t_target
@@ -73,7 +60,7 @@ def evaluate_model(model,
                     t = torch.tensor([t_target]).float().reshape(1).to(device)
                     
                     pred = model(x, t)
-                    pred = denormalize_data(pred.cpu().squeeze().numpy())
+                    pred = pred.cpu().squeeze().numpy()
                     predictions[i] = pred
                     
                     # Compute error
@@ -97,14 +84,13 @@ def evaluate_model(model,
                 
                 for j in range(n_test):
                     x = current_conditions[j].reshape(1, 1, -1)
-                    x = normalize_data(x)
                     
                     t_channel = torch.ones_like(x) * dt
                     x = torch.cat([x, t_channel], dim=1)
                     t = torch.tensor([dt]).float().reshape(1).to(device)
                     
                     pred = model(x, t)
-                    pred = denormalize_data(pred.cpu().squeeze())
+                    pred = pred.cpu().squeeze()
                     next_predictions[j] = pred
                 
                 predictions_dict[t_next] = next_predictions.cpu().numpy()
@@ -227,7 +213,7 @@ def bonus_task_evaluation(model, res_dir):
     fig2 = visualize_predictions(predictions2, test_data, res_dir=res_dir, filename="bonus_ar_inference.png")
 
     # Space-time heatmap
-    print("\n\033[1mVisualize with heapmap for direct inference\033[0m")
+    print("\n\033[1mVisualize with heatmap for direct inference\033[0m")
     visualize_predictions_heatmap(
         "data/test_sol.npy",
         model,
