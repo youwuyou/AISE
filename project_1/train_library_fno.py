@@ -9,8 +9,9 @@ import numpy as np
 from neuralop.models import FNO
 from pathlib import Path
 import os
+from torch.utils.data import DataLoader, TensorDataset
 
-from training import train_model, get_experiment_name, save_config, prepare_data
+from training import train_model, get_experiment_name, save_config
 
 
 def main():
@@ -67,14 +68,37 @@ def main():
     }
     save_config(config, checkpoint_dir)
     
-    # Prepare data (use library=True for library FNO)
-    training_set, testing_set, test_data = prepare_data(
-        "data/train_sol.npy",
-        training_config['n_train'],
-        training_config['batch_size'],
-        use_library=True
-    )
-    
+    # Prepare data
+    x_grid = torch.linspace(0, 1, 64).float()
+    if device:
+        x_grid = x_grid.to(device)
+
+    def prepare_input(u0):
+        batch_size = u0.shape[0]
+        x_grid_expanded = x_grid.expand(batch_size, -1)
+        input_data = torch.stack((u0, x_grid_expanded), dim=1)
+        return input_data.unsqueeze(-1)
+
+    # Prepare data
+    data_path = "data/train_sol.npy"
+    n_train   = training_config['n_train']
+    batch_size = training_config['batch_size']
+    data = torch.from_numpy(np.load(data_path)).type(torch.float32)
+    if device:
+        data = data.to(device)
+        
+    u_0_all = data[:, 0, :]   # All initial conditions
+    u_T_all = data[:, -1, :]  # All output data
+    input_function_train = prepare_input(u_0_all[:n_train, :])
+    input_function_test = prepare_input(u_0_all[n_train:, :])
+    output_function_train = u_T_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
+    output_function_test = u_T_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
+
+    training_set = DataLoader(TensorDataset(input_function_train, output_function_train), 
+                            batch_size=batch_size, shuffle=True)
+    testing_set = DataLoader(TensorDataset(input_function_test, output_function_test), 
+                            batch_size=batch_size, shuffle=False)
+
     # Initialize model and move to device
     model = FNO(**{k: v for k, v in model_config.items() if k != 'model_type'})
     model = model.to(device)

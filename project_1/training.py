@@ -32,54 +32,6 @@ def save_config(config, save_dir):
     with open(save_dir / 'training_config.json', 'w') as f:
         json.dump(config_copy, f, indent=4)
 
-def prepare_data(data_path, n_train, batch_size, use_library=False, model_type='fno2d', device=None):
-    """
-    Modified data preparation function that can handle FNO1D format.
-    """
-    data = torch.from_numpy(np.load(data_path)).type(torch.float32)
-    if device:
-        data = data.to(device)
-        
-    u_0_all = data[:, 0, :]   # All initial conditions
-    u_T_all = data[:, -1, :]  # All output data
-    
-    if model_type == 'fno1d':
-        input_function_train = u_0_all[:n_train, :].unsqueeze(1)  
-        input_function_test = u_0_all[n_train:, :].unsqueeze(1)   
-        output_function_train = u_T_all[:n_train, :].unsqueeze(1)  
-        output_function_test = u_T_all[n_train:, :].unsqueeze(1)   
-        
-    else:  # Original FNO2D format
-        x_grid = torch.linspace(0, 1, 64).float()
-        if device:
-            x_grid = x_grid.to(device)
-        
-        def prepare_input(u0):
-            batch_size = u0.shape[0]
-            x_grid_expanded = x_grid.expand(batch_size, -1)
-            if use_library:
-                input_data = torch.stack((u0, x_grid_expanded), dim=1)
-                return input_data.unsqueeze(-1)
-            else:
-                return torch.stack((u0, x_grid_expanded), dim=-1)
-        
-        input_function_train = prepare_input(u_0_all[:n_train, :])
-        input_function_test = prepare_input(u_0_all[n_train:, :])
-        
-        if use_library:
-            output_function_train = u_T_all[:n_train, :].unsqueeze(1).unsqueeze(-1)
-            output_function_test = u_T_all[n_train:, :].unsqueeze(1).unsqueeze(-1)
-        else:
-            output_function_train = u_T_all[:n_train, :].unsqueeze(-1)
-            output_function_test = u_T_all[n_train:, :].unsqueeze(-1)
-    
-    training_set = DataLoader(TensorDataset(input_function_train, output_function_train), 
-                            batch_size=batch_size, shuffle=True)
-    testing_set = DataLoader(TensorDataset(input_function_test, output_function_test), 
-                           batch_size=batch_size, shuffle=False)
-    
-    return training_set, testing_set, (input_function_test, output_function_test)
-
 def train_model(model, training_set, testing_set, config, checkpoint_dir):
     """
     Model-agnostic training function.
