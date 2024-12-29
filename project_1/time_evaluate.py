@@ -125,7 +125,7 @@ def evaluate_model(model,
     
     return predictions_dict, errors_dict
 
-def task4_evaluation(model, res_dir):
+def task4_evaluation(model, training_mode, res_dir):
     """
     # Task 4: All2All Training
     1. Use 64 trajectories from the training dataset.
@@ -136,7 +136,7 @@ def task4_evaluation(model, res_dir):
     5. ...
     6. ...
     """
-    print("\n\033[1mTask 4: Testing on All2All Training:\033[0m")
+    print(f"\n\033[1mTask 4: Testing on {training_mode} Training:\033[0m")
 
     # Define time points for evaluation (only t=0 and t=1)
     t_i = [0.0, 0.25, 0.5, 0.75, 1.0]
@@ -169,7 +169,7 @@ def task4_evaluation(model, res_dir):
     return predictions1
 
 
-def bonus_task_evaluation(model, res_dir):
+def bonus_task_evaluation(model, training_mode, res_dir):
     """
     # Bonus Task
     1. Direct prediction at multiple timesteps: t=0.25, 0.50, 0.75, 1.0
@@ -178,7 +178,7 @@ def bonus_task_evaluation(model, res_dir):
     4. Evaluate on OOD
     5. Visualize with heatmaps
     """
-    print("\n\033[1mBonus Task: Evaluate All2All Training on Different Timesteps:\033[0m")
+    print(f"\n\033[1mBonus Task: Evaluate {training_mode} Training on Different Timesteps:\033[0m")
     
     # Define time points t_i
     t_i = [0.0, 0.25, 0.50, 0.75, 1.0]  # t_0 through t_4
@@ -281,6 +281,7 @@ def main():
 
     model_config = config_dict["model_config"]
     training_config = config_dict["training_config"]
+    training_mode = training_config["training_mode"]
 
     # Initialize the model from config
     model_args = {k: v for k, v in model_config.items() if k != "model_type"}
@@ -300,8 +301,8 @@ def main():
 
     # Evaluate tasks
     print(f"Running evaluations in {checkpoint_dir} ...")
-    task4_results = task4_evaluation(model, res_dir)
-    bonus_results = bonus_task_evaluation(model, res_dir)
+    task4_results = task4_evaluation(model, training_mode, res_dir)
+    bonus_results = bonus_task_evaluation(model, training_mode, res_dir)
 
     print(f"\nAll plots have been saved in the '{res_dir}' directory.")
 
