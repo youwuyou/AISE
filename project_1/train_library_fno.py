@@ -1,5 +1,5 @@
 """
-Uses library-based FNO implementation
+Uses library-based FNO implementation for training (independent of time)
 
 https://github.com/neuraloperator/neuraloperator/blob/31b77fde81e705b2e3ed7d8f1f5de767f571b125/neuralop/models/fno.py#L69 
 """
