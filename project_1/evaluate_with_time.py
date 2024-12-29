@@ -1,9 +1,16 @@
+"""
+This module evaluates the already trained custom FNO model.
+
+- finishes task 4 & bonus task
+- evaluates custom time-dependent with time dependency
+"""
+
 import numpy as np
 import torch
 from pathlib import Path
 import json
 
-from time_custom_fno_1d import FNO1d
+from fno import FNO1d
 from visualization import (
     plot_ibvp_sol_heatmap,
     plot_trajectory_at_time,
