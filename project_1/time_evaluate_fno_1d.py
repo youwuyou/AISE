@@ -4,8 +4,7 @@ from pathlib import Path
 import json
 
 from time_custom_fno_1d import FNO1d
-from matplotlib.gridspec import GridSpec
-from time_visualize import (
+from visualization import (
     plot_ibvp_sol_heatmap,
     plot_trajectory_at_time,
     plot_l2_error_by_timestep
