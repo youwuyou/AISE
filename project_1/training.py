@@ -1,5 +1,5 @@
 """
-Utility functions used for training the FNO modelm used for both custom and library-based implementation
+Utility functions used for training the FNO models used for both custom and library-based implementation
 """
 
 import torch
