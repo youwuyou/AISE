@@ -1,5 +1,9 @@
 """
-Main module that evaluates the already trained FNO models on various dataset, finishing tasks from project 1
+Main module that evaluates the already trained FNO models on various dataset.
+
+- finishes task 1 - 3
+- evaluates models without time dependency
+- compares custom implementation defined in fno.py and library-based model imported from neuralop
 """
 
 import torch
@@ -8,7 +12,7 @@ from pathlib import Path
 import json
 
 from neuralop.models import FNO as LibraryFNO
-from custom_fno_1d import FNO1d
+from fno import FNO1d
 from visualization import (
     plot_combined_training_history,
     plot_training_history, 
