@@ -1,5 +1,6 @@
 """
-Temporal place for unchanged routine!"""
+Temporal place for unchanged routine!
+"""
 
 
 import torch
