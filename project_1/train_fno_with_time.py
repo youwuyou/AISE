@@ -9,7 +9,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader, Dataset, Subset
 
 
-from training import (
+from utils import (
    train_model,
    get_experiment_name,
    save_config,

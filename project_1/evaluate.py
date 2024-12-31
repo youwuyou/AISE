@@ -16,7 +16,7 @@ from visualization import (
     plot_l2_error_by_resolution,
     plot_error_distributions
 )
-from training import (
+from utils import (
 load_model,
 )
 from torch.utils.data import DataLoader

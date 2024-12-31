@@ -7,7 +7,7 @@ import numpy as np
 from pathlib import Path
 from fno import FNO1d
 from torch.utils.data import DataLoader, TensorDataset, Dataset
-from training import (
+from utils import (
 train_model, 
 get_experiment_name,
 save_config
