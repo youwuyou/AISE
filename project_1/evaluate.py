@@ -9,7 +9,6 @@ import torch
 from pathlib import Path
 import json
 
-from fno import FNO1d
 from visualization import (
     # plot_combined_training_history,
     plot_training_history, 
@@ -17,15 +16,35 @@ from visualization import (
     plot_l2_error_by_resolution,
     plot_error_distributions
 )
+from training import (
+load_model,
+)
 from torch.utils.data import DataLoader
-from dataset import OneToOne
+from dataset import OneToOne, All2All
 
-def evaluate_model(model, data_path: str, batch_size=5, start_idx=0, end_idx=4, device=None):
+
+def print_bold(text: str) -> None:
+    """Print a bold header text."""
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+    print(f"\n{BOLD}{text}{RESET}")
+
+def evaluate_model(model, 
+                  data_path: str, 
+                  batch_size=5, 
+                  start_idx=0, 
+                  end_idx=4,
+                  strategy="onetoone",
+                  device=None):
     if device is None:
         device = next(model.parameters()).device
         
     model.eval()
-    strategy = OneToOne("validation", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
+
+    if strategy == "onetoone":
+        strategy = OneToOne("validation", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
+    else:
+        strategy = All2All("validation", data_path=data_path, device=device)
     test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
     
     all_predictions = []
@@ -62,41 +81,26 @@ def evaluate_model(model, data_path: str, batch_size=5, start_idx=0, end_idx=4, 
     
     return results, (u0, uT)
 
-def load_model(checkpoint_dir: str) -> torch.nn.Module:
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint_dir = Path(checkpoint_dir)
-    
-    with open(checkpoint_dir / 'training_config.json', 'r') as f:
-        config_dict = json.load(f)
-    
-    model_config = config_dict['model_config']
-    model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
-    model = FNO1d(**model_args)
-    
-    model.load_state_dict(torch.load(checkpoint_dir / 'best_model.pth', weights_only=True))    
-    model = model.to(device)
-    model.eval()
-    return model
-
 def task1_evaluation(model, res_dir):
-    print("\033[1mTask 1: Evaluating FNO model from one-to-one training on standard test set...\033[0m")    
+    print_bold("Task 1: Evaluating FNO model from One-to-One training on standard test set...")    
     result, test_data = evaluate_model(model, "data/test_sol.npy")
-    print(f"\nAverage Relative L2 Error Over {test_data[0].shape[0]} Testing Trajectories (resolution {test_data[0].shape[1]}):")
-    print("-" * 50)
+    print(f"Resolution: {test_data[0].shape[0]}")    
+    print(f"Average Relative L2 Error Over {test_data[0].shape[0]} Testing Trajectories (resolution {test_data[0].shape[1]}):")
     print(f"Custom FNO: {result['error']:.2f}%")
     return result
 
 def task2_evaluation(model, res_dir):
-    print("\n\033[1mTask 2: Testing on different resolutions:\033[0m")
+    print_bold("Task 2: Testing on different resolutions:")
     resolutions = [32, 64, 96, 128]
     resolution_results = {'Custom FNO': {'errors': [], 'predictions': {}, 'abs_errors': []}}
     
     for res in resolutions:
-        print(f"\nResolution: {res}")
+        print(f"Resolution: {res}")
         result, test_data = evaluate_model(model, f"data/test_sol_res_{res}.npy", end_idx=1)
-        print(f"\nAverage Relative L2 Error Over {test_data[0].shape[0]} Testing Trajectories (resolution {test_data[0].shape[1]}):")
-        print("-" * 50)
+        
+        print(f"Average Relative L2 Error Over {test_data[0].shape[0]} Testing Trajectories (resolution {test_data[0].shape[1]}):")
         print(f"Custom FNO: {result['error']:.2f}%")
+        print("-" * 50)
         resolution_results['Custom FNO']['errors'].append(result['error'])
         resolution_results['Custom FNO']['predictions'][res] = result['predictions']
     
@@ -126,17 +130,16 @@ def task2_evaluation(model, res_dir):
     return resolution_results
 
 def task3_evaluation(model, res_dir):    
-    print("\033[1mTask 3: Testing on OOD dataset:\033[0m")
+    print_bold("Task 3: Testing on OOD dataset:")
     
     in_result, in_data = evaluate_model(model, "data/test_sol.npy")
     ood_result, ood_data = evaluate_model(model, "data/test_sol_OOD.npy", end_idx=1)
     
-    print(f"\nIn-Distribution - Average Relative L2 Error Over {in_data[0].shape[0]} Testing Trajectories:")
-    print("-" * 50)
+    print(f"In-Distribution - Average Relative L2 Error Over {in_data[0].shape[0]} Testing Trajectories:")
     print(f"Custom FNO: {in_result['error']:.2f}%")
-        
-    print(f"\nOut-of-Distribution - Average Relative L2 Error Over {ood_data[0].shape[0]} Testing Trajectories:")
     print("-" * 50)
+        
+    print(f"Out-of-Distribution - Average Relative L2 Error Over {ood_data[0].shape[0]} Testing Trajectories:")
     print(f"Custom FNO: {ood_result['error']:.2f}%")
     
     in_dist_results = {'Custom FNO': in_result}
@@ -163,14 +166,14 @@ def main():
     task1_results = task1_evaluation(model, res_dir)
     task2_results = task2_evaluation(model, res_dir)
     task3_results = task3_evaluation(model, res_dir)
-
-    print("\n\033[1mTask 4: Testing on All2All Training:\033[0m")
-    print("\n\033[1mTODO!\033[0m")
     
-    print("\n\033[1mBonus Task: Evaluate All2All Training on Different Timesteps:\033[0m")
-    print("\n\033[1mTODO!\033[0m")
-
-    print(f"\nAll plots have been saved in the '{res_dir}' directory.")
+    print_bold("Task 4: Testing on All2All Training:")
+    print_bold("TODO!")
+    
+    print_bold("Bonus Task: Evaluate All2All Training on Different Timesteps:")
+    print_bold("TODO!")
+    
+    print(f"All plots have been saved in the '{res_dir}' directory.")
 
 if __name__ == "__main__":
     main()
