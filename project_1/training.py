@@ -1,5 +1,5 @@
 """
-Utility functions used for training the FNO models used for both custom and library-based implementation
+Utility functions used for training the FNO models used for our custom FNO implementation
 """
 
 import torch
@@ -11,13 +11,7 @@ from pathlib import Path
 def get_experiment_name(config):
     """Create a unique experiment name based on key parameters and timestamp"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # For library FNO
-    if 'n_modes' in config:
-        return f"fno_m{config['n_modes'][0]}_w{config['hidden_channels']}_lr{config['learning_rate']}_{timestamp}"
-    # For custom FNO
-    else:
-        return f"fno_m{config['modes']}_w{config['width']}_d{config['depth']}_lr{config['learning_rate']}_{timestamp}"
+    return f"fno_m{config['modes']}_w{config['width']}_d{config['depth']}_lr{config['learning_rate']}_{timestamp}"
 
 def save_config(config, save_dir):
     """Save configuration to a JSON file"""

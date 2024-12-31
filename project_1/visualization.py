@@ -23,85 +23,22 @@ def plot_training_history(experiment_dir: Path, save_dir: Optional[Path] = None)
         config = json.load(f)
         history = config['training_history']
     
-    model_name = "Custom FNO" if "custom_fno" in str(experiment_dir) else "Library FNO"
-    
     plt.figure(figsize=(10, 6))
     plt.plot(history['train_loss'], label='Training Loss', color='blue', alpha=0.7)
     plt.plot(history['val_loss'], label='Validation Loss', color='red', alpha=0.7)
         
-    plt.title(f'Training History - {model_name}')
+    plt.title('Training History - Custom FNO')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.yscale('log')
     plt.grid(True, which='both', linestyle='--', alpha=0.4)
     plt.legend()
     
-    plt.savefig(save_dir / f'training_history_{model_name.lower().replace(" ", "_")}.png',
+    plt.savefig(save_dir / 'training_history_custom_fno.png',
                bbox_inches='tight', dpi=300)
     plt.close()
 
-def plot_combined_training_history(custom_dir: Path, library_dir: Path, save_dir: Optional[Path] = None) -> None:
-    custom_dir, library_dir = Path(custom_dir), Path(library_dir)
-    save_dir = Path(save_dir) if save_dir else custom_dir.parent
-    save_dir.mkdir(exist_ok=True)
-    
-    with open(custom_dir / 'training_config.json', 'r') as f:
-        custom_history = json.load(f)['training_history']
-    
-    with open(library_dir / 'training_config.json', 'r') as f:
-        library_history = json.load(f)['training_history']
-    
-    plt.figure(figsize=(12, 7))
-    
-    plt.plot(custom_history['train_loss'], 
-            label='Custom FNO - Training', 
-            color='darkgreen', 
-            alpha=0.7)
-    plt.plot(custom_history['val_loss'], 
-            label='Custom FNO - Validation', 
-            color='lightgreen', 
-            linestyle='--', 
-            alpha=0.7)
-    
-    plt.plot(library_history['train_loss'], 
-            label='Library FNO - Training', 
-            color='darkviolet', 
-            alpha=0.7)
-    plt.plot(library_history['val_loss'], 
-            label='Library FNO - Validation', 
-            color='plum', 
-            linestyle='--', 
-            alpha=0.7)
-    
-    custom_stop = len(custom_history['train_loss']) - 1
-    library_stop = len(library_history['train_loss']) - 1
-    
-    plt.axvline(x=custom_stop, 
-                color='seagreen', 
-                linestyle=':', 
-                alpha=0.5,
-                label=f'Custom Stop (epoch {custom_stop})')
-    plt.axvline(x=library_stop, 
-                color='purple', 
-                linestyle=':', 
-                alpha=0.5,
-                label=f'Library Stop (epoch {library_stop})')
-    
-    plt.title('Training History Comparison')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.yscale('log')
-    plt.grid(True, which='both', linestyle='--', alpha=0.4)
-    
-    # Calculate position to avoid vertical lines and place legend
-    plt.legend(loc='upper right')  # Simple solution - let matplotlib choose optimal position
-
-    plt.savefig(save_dir / 'training_history_comparison.png',
-               bbox_inches='tight', dpi=300)
-    plt.close()
-
-
-def plot_resolution_comparison(models: Dict[str, torch.nn.Module], 
+def plot_resolution_comparison(model: torch.nn.Module, 
                              data_dict: Dict,
                              results_dict: Dict,
                              save_dir: Path,
@@ -110,11 +47,9 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
     save_dir.mkdir(exist_ok=True)
     
     resolutions = sorted(data_dict.keys())
-    model_names = list(models.keys())
     colors = {
         'True': '#000000',
-        'Custom FNO': '#1f77b4',
-        'Library FNO': '#ff7f0e'
+        'Custom FNO': 'tab:orange'
     }
     
     fig = plt.figure(figsize=(20, 12))
@@ -125,7 +60,6 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
     fig.suptitle(title if title else 'Model Prediction Across Resolutions', 
                 fontsize=16, y=0.95, weight='bold')
     
-    # First pass for global min/max
     global_min = float('inf')
     global_max = float('-inf')
     
@@ -135,10 +69,9 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
         global_min = min(global_min, true_sol.min().item())
         global_max = max(global_max, true_sol.max().item())
         
-        for name in model_names:
-            pred = results_dict[name]['predictions'][res][sample_idx].cpu().detach()
-            global_min = min(global_min, pred.min().item())
-            global_max = max(global_max, pred.max().item())
+        pred = results_dict['Custom FNO']['predictions'][res][sample_idx].cpu().detach()
+        global_min = min(global_min, pred.min().item())
+        global_max = max(global_max, pred.max().item())
     
     y_padding = (global_max - global_min) * 0.15
     y_min = global_min - y_padding
@@ -156,28 +89,27 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
                        linewidth=2, 
                        alpha=0.8)
         
-        for name in model_names:
-            error = results_dict[name]['errors'][idx]
-            pred = results_dict[name]['predictions'][res][sample_idx].cpu().detach()
-            
-            axes[i, j].plot(x_grid, 
-                          pred,
-                          '--', 
-                          color=colors[name],
-                          label=f'{name}',
-                          linewidth=1.5,
-                          alpha=0.8)
-            
-            marker_size = max(3, 15 // (res/32))
-            marker_alpha = max(0.2, 0.5 // (res/32))
-
-            axes[i, j].scatter(x_grid, 
-                             pred,
-                             marker='o' if 'Custom' in name else 's',
-                             color=colors[name],
-                             s=marker_size,
-                             alpha=marker_alpha)
+        error = results_dict['Custom FNO']['errors'][idx]
+        pred = results_dict['Custom FNO']['predictions'][res][sample_idx].cpu().detach()
         
+        axes[i, j].plot(x_grid, 
+                      pred,
+                      '--', 
+                      color=colors['Custom FNO'],
+                      label='Custom FNO',
+                      linewidth=1.5,
+                      alpha=0.8)
+        
+        marker_size = max(3, 15 // (res/32))
+        marker_alpha = max(0.2, 0.5 // (res/32))
+
+        axes[i, j].scatter(x_grid, 
+                         pred,
+                         marker='o',
+                         color=colors['Custom FNO'],
+                         s=marker_size,
+                         alpha=marker_alpha)
+    
         axes[i, j].set_title(f'Resolution: {res} points', pad=10, fontsize=12, weight='bold')
         axes[i, j].grid(True, linestyle='--', alpha=0.3)
         axes[i, j].legend(loc='upper right', framealpha=0.9)
@@ -194,8 +126,7 @@ def plot_resolution_comparison(models: Dict[str, torch.nn.Module],
         for spine in axes[i, j].spines.values():
             spine.set_linewidth(0.8)
             
-        error_text = ' '.join([f'{name}: {results_dict[name]["errors"][idx]:.2f}%' 
-                             for name in model_names])
+        error_text = f'Custom FNO: {error:.2f}%'
         axes[i, j].set_title(f'Resolution: {res} points\n{error_text}', 
                            pad=10, fontsize=12, weight='bold')
 
@@ -215,59 +146,50 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]],
     save_dir.mkdir(exist_ok=True)
     
     fig, ax = plt.subplots(figsize=(12, 7))
-    
-    colors = {
-        'Custom FNO': '#1f77b4',
-        'Library FNO': '#ff7f0e'
-    }
-    
+    colors = {'Custom FNO': '#1f77b4'}
     ax.grid(True, linestyle='--', alpha=0.2, which='both')
     ax.set_axisbelow(True)
     
-    # Plot lines and markers for each model
-    for i, (model_name, model_results) in enumerate(results.items()):
-        line = ax.plot(resolutions, 
-                      model_results['errors'],
-                      '-',
-                      label=model_name,
-                      color=colors[model_name],
-                      linewidth=2.5,
-                      zorder=3)
-        
-        ax.plot(resolutions,
-                model_results['errors'],
-                'o',
-                color=colors[model_name],
-                markersize=10,
-                markeredgewidth=2,
-                markeredgecolor='white',
-                zorder=4)
-        
-        ax.plot(resolutions,
-                model_results['errors'],
-                'o',
-                color=colors[model_name],
-                markersize=6,
-                zorder=5)
-        
-        for j, (x, y) in enumerate(zip(resolutions, model_results['errors'])):
-            y_offset = 10 if i == 0 or j != len(resolutions) - 1 else -20
-            
-            bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
-            ax.annotate(f'{y:.2f}%', 
-                       (x, y),
-                       textcoords="offset points",
-                       xytext=(0, y_offset),
-                       ha='center',
-                       va='bottom' if y_offset > 0 else 'top',
-                       fontsize=10,
-                       bbox=bbox_props,
-                       zorder=6)
+    model_results = results['Custom FNO']
+    line = ax.plot(resolutions, 
+                  model_results['errors'],
+                  '-',
+                  label='Custom FNO',
+                  color=colors['Custom FNO'],
+                  linewidth=2.5,
+                  zorder=3)
     
-    # Add vertical line at training resolution if specified
+    ax.plot(resolutions,
+            model_results['errors'],
+            'o',
+            color=colors['Custom FNO'],
+            markersize=10,
+            markeredgewidth=2,
+            markeredgecolor='white',
+            zorder=4)
+    
+    ax.plot(resolutions,
+            model_results['errors'],
+            'o',
+            color=colors['Custom FNO'],
+            markersize=6,
+            zorder=5)
+    
+    for j, (x, y) in enumerate(zip(resolutions, model_results['errors'])):
+        bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
+        ax.annotate(f'{y:.2f}%', 
+                   (x, y),
+                   textcoords="offset points",
+                   xytext=(0, 10),
+                   ha='center',
+                   va='bottom',
+                   fontsize=10,
+                   bbox=bbox_props,
+                   zorder=6)
+    
     if training_resolution is not None:
-        ymin = min(min(r['errors']) for r in results.values())
-        ymax = max(max(r['errors']) for r in results.values())
+        ymin = min(model_results['errors'])
+        ymax = max(model_results['errors'])
         padding = (ymax - ymin) * 0.1
         y_limits = (ymin - padding * 2, ymax + padding * 3)
         
@@ -288,8 +210,8 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]],
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
     
-    ymin = min(min(r['errors']) for r in results.values())
-    ymax = max(max(r['errors']) for r in results.values())
+    ymin = min(model_results['errors'])
+    ymax = max(model_results['errors'])
     padding = (ymax - ymin) * 0.1
     ax.set_ylim(ymin - padding * 2, ymax + padding * 3)
     
@@ -305,106 +227,89 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]],
                 bbox_inches='tight', dpi=300)
     plt.close()
 
-
 def plot_error_distributions(in_dist_results, ood_results, save_path):
-    fig = plt.figure(figsize=(16, 12))
-    gs = fig.add_gridspec(2, 2, hspace=0.4)
-
-    model_colors = {
-        'Custom FNO': '#1f77b4',
-        'Library FNO': '#ff7f0e'
-    }
-
+    fig = plt.figure(figsize=(12, 6))
+    gs = fig.add_gridspec(1, 2, wspace=0.3)
+    
+    model_colors = {'Custom FNO': '#1f77b4'}
     stat_styles = {
         'mode': '--',
         'mean': '-', 
         'median': ':',
     }
 
-    # First pass to determine global axis limits
     all_errors = []
     max_density = 0
-    #    for model in ['Custom FNO', 'Library FNO']:
-    for model in ['Custom FNO']:
-
-       for results in [in_dist_results, ood_results]:
-           errors = np.array(results[model]['individual_errors'])
-           all_errors.extend(errors)
-           counts, _ = np.histogram(errors, bins=30, density=True)
-           max_density = max(max_density, np.max(counts))
+    for results in [in_dist_results, ood_results]:
+        errors = np.array(results['Custom FNO']['individual_errors'])
+        all_errors.extend(errors)
+        counts, _ = np.histogram(errors, bins=30, density=True)
+        max_density = max(max_density, np.max(counts))
 
     global_xlim = (0, np.ceil(max(all_errors)))
-    global_ylim = (0, max_density * 1.2)  # Add 20% padding for labels
+    global_ylim = (0, max_density * 1.2)
 
-    # Add model labels on right side
-    plt.figtext(0.95, 0.75, 'Custom FNO', color=model_colors['Custom FNO'], rotation=270, fontsize=14, weight='bold')
-    plt.figtext(0.95, 0.25, 'Library FNO', color=model_colors['Library FNO'], rotation=270, fontsize=14, weight='bold')
-
-    # Add distribution type labels at top
     plt.figtext(0.25, 0.95, 'In-Distribution Data', fontsize=15, weight='bold', ha='center')
     plt.figtext(0.75, 0.95, 'Out-of-Distribution Data', fontsize=15, weight='bold', ha='center')
 
-    # FIXME: enumerate(['Custom FNO', 'Library FNO'])
-    for model_idx, model_name in enumerate(['Custom FNO']):
-        stat_lines = []
-        stat_labels = []
-        for dist_idx, results in enumerate([in_dist_results, ood_results]):
-            ax = fig.add_subplot(gs[model_idx, dist_idx])
+    stat_lines = []
+    stat_labels = []
+    for dist_idx, results in enumerate([in_dist_results, ood_results]):
+        ax = fig.add_subplot(gs[0, dist_idx])
+        
+        errors = np.array(results['Custom FNO']['individual_errors'])
+        plt.hist(errors, bins=30, density=True, alpha=0.5,
+                color=model_colors['Custom FNO'],
+                edgecolor='white', linewidth=1)
+        
+        counts, bin_edges = np.histogram(errors, bins=30, density=True)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        stats = {
+            'mode': bin_centers[np.argmax(counts)],
+            'mean': np.mean(errors),
+            'median': np.median(errors)
+        }
+        
+        for stat, style in stat_styles.items():
+            stat_value = stats[stat]
+            line = plt.axvline(stat_value, color=model_colors['Custom FNO'],
+                            linestyle=style, alpha=1.0, linewidth=2)
+            if dist_idx == 0:
+                stat_lines.append(line)
+                stat_labels.append(stat.capitalize())
             
-            errors = np.array(results[model_name]['individual_errors'])
-            plt.hist(errors, bins=30, density=True, alpha=0.5,
-                    color=model_colors[model_name],
-                    edgecolor='white', linewidth=1)
-            
-            counts, bin_edges = np.histogram(errors, bins=30, density=True)
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            
-            stats = {
-                'mode': bin_centers[np.argmax(counts)],
-                'mean': np.mean(errors),
-                'median': np.median(errors)
-            }
-            
-            for stat, style in stat_styles.items():
-                stat_value = stats[stat]
-                line = plt.axvline(stat_value, color=model_colors[model_name],
-                                linestyle=style, alpha=1.0, linewidth=2)
-                if dist_idx == 0:
-                    stat_lines.append(line)
-                    stat_labels.append(stat.capitalize())
-                
-                # Add mean value label with background
-                if stat == 'mean':
-                    label = f'Mean: {stat_value:.2f}%'
-                    bbox_props = dict(
-                        boxstyle='round,pad=0.5',
-                        fc='white',
-                        ec=model_colors[model_name],
-                        alpha=0.8
-                    )
-                    plt.text(stat_value + 0.5, global_ylim[1] * 0.8,
-                            label,
-                            color=model_colors[model_name],
-                            fontsize=12,
-                            fontweight='bold',
-                            bbox=bbox_props,
-                            horizontalalignment='left')
-            
-            plt.xlabel('Test Error (%)', fontsize=11)
-            plt.ylabel('Density', fontsize=11)
-            plt.grid(True, alpha=0.2)
-            plt.xlim(global_xlim)
-            plt.ylim(global_ylim)
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
+            if stat == 'mean':
+                label = f'Mean: {stat_value:.2f}%'
+                bbox_props = dict(
+                    boxstyle='round,pad=0.5',
+                    fc='white',
+                    ec=model_colors['Custom FNO'],
+                    alpha=0.8
+                )
+                plt.text(stat_value + 0.5, global_ylim[1] * 0.8,
+                        label,
+                        color=model_colors['Custom FNO'],
+                        fontsize=12,
+                        fontweight='bold',
+                        bbox=bbox_props,
+                        horizontalalignment='left')
+        
+        plt.xlabel('Test Error (%)', fontsize=11)
+        plt.ylabel('Density', fontsize=11)
+        plt.grid(True, alpha=0.2)
+        plt.xlim(global_xlim)
+        plt.ylim(global_ylim)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
 
-        fig.legend(stat_lines, stat_labels,
-                    title='Statistics',
-                    loc='upper right',
-                    bbox_to_anchor=(0.93, 0.93 - 0.5 * model_idx),
-                    labelcolor='#404040')
+    fig.legend(stat_lines, stat_labels,
+                title='Statistics',
+                loc='upper right',
+                bbox_to_anchor=(0.93, 0.93),
+                labelcolor='#404040')
 
-    plt.subplots_adjust(right=0.9, top=0.9)
+    plt.subplots_adjust(right=0.9, top=0.85)
     plt.savefig(save_path.parent / 'ood_error_distribution_comparison.png', 
                 dpi=300, bbox_inches='tight')
     plt.close()

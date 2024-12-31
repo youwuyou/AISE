@@ -22,12 +22,12 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 
 class OneToOne(Dataset):
     def __init__(self, 
-                which, 
+                which,
                 training_samples=64, 
                 data_path="data/train_sol.npy",
                 lx=1.0, 
                 dt=0.25, 
-                start_idx=0, 
+                start_idx=0,
                 end_idx=4, 
                 device='cuda'):
         # dataset = torch.from_numpy(np.load(data_path))
@@ -88,12 +88,10 @@ class OneToOne(Dataset):
         u_start = self.u_start[idx]
         v_start = self.v_start[idx]
         dt = torch.full_like(u_start, self.dt * (self.end_idx - self.start_idx), device=u_start.device)
-        u_end = self.u_end[idx]
         x_grid = self.x_grid.to(u_start.device)
         input_data = torch.stack((u_start, v_start, x_grid, dt), dim=-1)
-        output_data = u_end.unsqueeze(-1)
+        output_data = self.u_end[idx].unsqueeze(-1)        
         return input_data, output_data
-
 
 def main():
     # Testing dataset loading
