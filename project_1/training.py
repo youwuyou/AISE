@@ -7,6 +7,7 @@ import numpy as np
 import json
 from datetime import datetime
 from pathlib import Path
+from fno import FNO1d
 
 def get_experiment_name(config):
     """Create a unique experiment name based on key parameters and timestamp"""
@@ -24,6 +25,22 @@ def save_config(config, save_dir):
     
     with open(save_dir / 'training_config.json', 'w') as f:
         json.dump(config_copy, f, indent=4)
+
+def load_model(checkpoint_dir: str) -> torch.nn.Module:
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    checkpoint_dir = Path(checkpoint_dir)
+    
+    with open(checkpoint_dir / 'training_config.json', 'r') as f:
+        config_dict = json.load(f)
+    
+    model_config = config_dict['model_config']
+    model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
+    model = FNO1d(**model_args)
+    
+    model.load_state_dict(torch.load(checkpoint_dir / 'model.pth', weights_only=True))    
+    model = model.to(device)
+    model.eval()
+    return model
 
 def train_model(model, training_set, testing_set, config, checkpoint_dir):
     """
@@ -89,7 +106,7 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
             training_history['best_epoch'] = epoch
             epochs_without_improvement = 0
             
-            torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
+            torch.save(model.state_dict(), checkpoint_dir / 'model.pth')
             
             try:
                 with open(checkpoint_dir / 'training_config.json', 'r') as f:
