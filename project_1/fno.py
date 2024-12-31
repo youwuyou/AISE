@@ -61,6 +61,7 @@ class FNO1d(nn.Module):
         
         # Time-conditional normalization (only if time_dependent)
         if time_dependent:
+            print(f"Time dependent is set to {time_dependent}")
             self.film_list = nn.ModuleList([
                 FILM(self.width, use_bn=True) for _ in range(self.depth)
             ])
@@ -73,28 +74,26 @@ class FNO1d(nn.Module):
 
         self.to(device)  # Move model to specified device
 
-    def forward(self, x, t=None):
+    def forward(self, x):
         """
         Forward pass of the model.
         
         Args:
             x: Input tensor of shape [batch_size, sequence_length, channel]
-            t: Optional time tensor of shape [batch_size] for time-dependent model
             
         Returns:
             Output tensor of shape [batch_size, sequence_length, 1]
-        """
-        if self.time_dependent:
-            # TODO: this data format is wrong!
-            if t is None:
-                raise ValueError("Time tensor 't' must be provided when model is time-dependent")
-            # Time-dependent forward pass
-            x = x.permute(0, 2, 1)  # Change to [batch, width, sequence_length]
-            x = self.fc0(x)         # Apply lifting layer
-        else:
-            # Time-independent forward pass
-            x = self.fc0(x)
-            x = x.permute(0, 2, 1)  # Now shape is [batch, width, sequence_length]
+        """        
+        u_start = x[..., 0].unsqueeze(-1)
+        v_start = x[..., 1].unsqueeze(-1)
+        x_grid  = x[..., 2].unsqueeze(-1)
+
+        # dt will not be used if time-dependent is not set True
+        dt = x[..., 3].unsqueeze(-1)  # Keep as [batch]
+        
+        x = torch.cat((u_start, v_start, x_grid), dim=-1)
+        x = self.fc0(x)
+        x = x.permute(0, 2, 1)  # Now shape is [batch, width, sequence_length]
         
         # Apply padding
         x_padding = int(round(x.shape[-1] * self.padding_frac))
@@ -104,14 +103,10 @@ class FNO1d(nn.Module):
         for i in range(self.depth):
             # Store input for residual connection
             x_input = x
-            
             # Fourier integral operator K^(l)
             x1 = self.spectral_list[i](x)  # Shape: [batch, width, sequence_length]
-            
             # Residual connection W^(l)
-            x2 = self.w_list[i](x_input.transpose(1, 2))  # Input: [batch, sequence_length, width]
-            x2 = x2.transpose(1, 2)  # Back to [batch, width, sequence_length]
-            
+            x2 = self.w_list[i](x_input.transpose(1, 2)).transpose(1, 2)
             # Expand b to match the sequence length
             b_expanded = self.b_list[i].expand(-1, -1, x1.size(-1))
             
@@ -120,7 +115,9 @@ class FNO1d(nn.Module):
             
             # Apply time-conditional normalization if time-dependent
             if self.time_dependent:
-                x = self.film_list[i](x, t)
+                # tensor([[a], [b], [c], [d], [e]])
+                dt = dt[:, 0].unsqueeze(-1)  # or dt[:, 0].view(-1, 1)
+                x = self.film_list[i](x, dt)
             
             # Apply activation (except for last layer)
             if i != self.depth - 1:

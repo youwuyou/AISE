@@ -16,11 +16,67 @@ from fno import FNO1d
 from visualization import (
     plot_combined_training_history,
     plot_training_history, 
-    plot_trajectory_grid, 
     plot_resolution_comparison,
     plot_l2_error_by_resolution,
     plot_error_distributions
 )
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+from dataset import OneToOne
+
+def evaluate_models(models, 
+                    data_path: str, 
+                    batch_size=5,
+                    start_idx=0,
+                    end_idx=4,
+                    ):
+
+    strategy = OneToOne("validation", data_path=data_path, start_idx=start_idx, end_idx=end_idx)
+    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
+
+    device = next(iter(models.values())).parameters().__next__().device
+    results = {}
+    
+    # Store initial and final states for plotting
+    all_u0 = []
+    all_uT = []
+    
+    for name, model in models.items():
+        model.eval()
+        all_predictions = []
+        all_errors = []
+        
+        with torch.no_grad():
+            for batch_input, batch_target in test_loader:
+                # Input is already properly formatted from DataLoader
+                predictions = model(batch_input)
+                predictions = predictions.squeeze(-1)
+                targets = batch_target.squeeze(-1)
+                
+                # Store initial conditions for plotting
+                if len(all_u0) < len(test_loader.dataset):
+                    all_u0.append(batch_input[:, 0].cpu())  # First channel is u0
+                    all_uT.append(targets.cpu())
+                
+                # Calculate errors
+                individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
+                all_predictions.append(predictions.cpu())
+                all_errors.extend(individual_abs_errors.mul(100).tolist())
+            
+            # Combine results
+            predictions = torch.cat(all_predictions, dim=0)
+            average_error = sum(all_errors) / len(all_errors)
+            
+            results[name] = {
+                'predictions': predictions,
+                'error': average_error,
+                'individual_errors': all_errors
+            }
+    
+    # Combine all initial and target states
+    u0 = torch.cat(all_u0, dim=0)
+    uT = torch.cat(all_uT, dim=0)
+    
+    return results, (u0, uT)
 
 def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -43,66 +99,6 @@ def load_model(checkpoint_dir: str, model_type: str) -> torch.nn.Module:
     model.eval()
     return model
 
-def evaluate_models(models, data_path):
-    device = next(iter(models.values())).parameters().__next__().device  # Get device from model
-    
-    data = np.load(data_path)
-    n_samples, _, resolution = data.shape
-    
-    u0 = torch.from_numpy(data[:, 0, :]).float().to(device)
-    uT = torch.from_numpy(data[:, -1, :]).float().to(device)
-    
-    print(f"Data shape: {data.shape} (trajectories, timestamps, resolution)")
-    print(f"Testing on {n_samples} trajectories with resolution {resolution}")
-    
-    results = {}
-    
-    for name, model in models.items():
-        with torch.no_grad():
-            model_type = 'library' if 'Library' in name else 'custom'
-            
-            if model_type == 'library':
-                x_grid = torch.linspace(0, 1, resolution).float().to(device)
-                x_grid_expanded = x_grid.expand(u0.shape[0], -1)
-                model_input = torch.stack((u0, x_grid_expanded), dim=1).unsqueeze(-1)
-                predictions = model(model_input)
-                predictions = predictions.squeeze(-1).squeeze(1)
-            else:
-                x_grid = torch.linspace(0, 1, resolution).float().to(device)
-                x_grid_expanded = x_grid.expand(u0.shape[0], -1)
-                model_input = torch.stack((u0, x_grid_expanded), dim=-1)
-                predictions = model(model_input)
-                predictions = predictions.squeeze(-1)
-            
-            individual_abs_errors = torch.norm(predictions - uT, p=2, dim=1) / torch.norm(uT, p=2, dim=1)
-            average_error = individual_abs_errors.mean().item() * 100
-            individual_errors_percent = individual_abs_errors.mul(100).tolist()
-            
-            results[name] = {
-                'predictions': predictions.cpu(),  # Move back to CPU for plotting
-                'error': average_error,
-                'individual_errors': individual_errors_percent
-            }
-    
-    return results, (u0.cpu(), uT.cpu())  # Return CPU tensors for plotting
-
-def prepare_resolution_data(resolutions, n_samples=64):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data_dict = {}
-    for res in resolutions:
-        data = np.load(f"data/test_sol_res_{res}.npy")
-        u0 = torch.from_numpy(data[:n_samples, 0, :]).float().to(device)
-        uT = torch.from_numpy(data[:n_samples, -1, :]).float().to(device)
-        
-        x_grid = torch.linspace(0, 1, res).float().to(device)
-        x_grid_expanded = x_grid.expand(u0.shape[0], -1)
-        
-        data_dict[res] = {
-            'custom': (torch.stack((u0, x_grid_expanded), dim=-1), uT),
-            'library': (torch.stack((u0, x_grid_expanded), dim=1).unsqueeze(-1), 
-                       uT.unsqueeze(1).unsqueeze(-1))
-        }
-    return data_dict
 
 def task1_evaluation(models, res_dir):
     print("\033[1mTask 1: Evaluating FNO models from one-to-one training on standard test set...\033[0m")    
@@ -112,33 +108,6 @@ def task1_evaluation(models, res_dir):
     print("-" * 50)
     for name, result in results.items():
         print(f"{name}: {result['error']:.2f}%")
-    
-    device = next(iter(models.values())).parameters().__next__().device
-    u0, uT = test_data
-    # Move to device for computation
-    u0, uT = u0.to(device), uT.to(device)
-    x_grid = torch.linspace(0, 1, u0.shape[1]).to(device)
-    
-    custom_input = torch.stack((u0, x_grid.expand(u0.shape)), dim=-1)
-    library_input = torch.stack((u0, x_grid.expand(u0.shape)), dim=1).unsqueeze(-1)
-    
-    for name, model in models.items():
-        model_type = 'library' if 'Library' in name else 'custom'
-        input_data = library_input if model_type == 'library' else custom_input
-        output_format = uT.unsqueeze(1).unsqueeze(-1) if model_type == 'library' else uT
-        
-        # Move predictions back to CPU before plotting
-        plot_trajectory_grid(
-            input_data.cpu(), 
-            output_format.cpu(), 
-            model,
-            individual_errors=results[name]['individual_errors'],
-            predictions=results[name]['predictions'],
-            save_path=res_dir / f'trajectory_grid_{name.lower().replace(" ", "_")}.png',
-            model_type=model_type,
-            title=f"Wave Solutions: {name}"
-        )
-    
     return results
 
 def task2_evaluation(models, res_dir):
@@ -148,7 +117,7 @@ def task2_evaluation(models, res_dir):
     
     for res in resolutions:
         print(f"\nResolution: {res}")
-        results, _ = evaluate_models(models, f"data/test_sol_res_{res}.npy")
+        results, _ = evaluate_models(models, f"data/test_sol_res_{res}.npy", end_idx=1)
         print(f"\nAverage Relative L2 Error Over {_[0].shape[0]} Testing Trajectories (resolution {_[0].shape[1]}):")
         print("-" * 50)
         for name, result in results.items():
@@ -156,7 +125,25 @@ def task2_evaluation(models, res_dir):
             resolution_results[name]['errors'].append(result['error'])
             resolution_results[name]['predictions'][res] = result['predictions']
     
-    resolution_data = prepare_resolution_data(resolutions)
+    resolution_data = {}
+    for res in resolutions:
+        dataset = OneToOne(
+            which="validation", 
+            data_path=f"data/test_sol_res_{res}.npy",
+            start_idx=0,
+            end_idx=1
+        )
+        
+        input_data = torch.stack((
+            dataset.u_start,
+            dataset.v_start,
+            dataset.x_grid.repeat(len(dataset.u_start), 1),
+            torch.full_like(dataset.u_start, dataset.dt)
+        ), dim=-1)
+        
+        resolution_data[res] = {
+            'custom': (input_data, dataset.u_end)
+        }    
     
     plot_resolution_comparison(
         models, 
@@ -181,7 +168,7 @@ def task3_evaluation(models, res_dir):
     in_dist_results, in_dist_data = evaluate_models(models, "data/test_sol.npy")
     
     # Get OOD results
-    ood_results, ood_data = evaluate_models(models, "data/test_sol_OOD.npy")
+    ood_results, ood_data = evaluate_models(models, "data/test_sol_OOD.npy", end_idx=1)
     
     # Print in-distribution results
     print(f"\nIn-Distribution - Average Relative L2 Error Over {in_dist_data[0].shape[0]} Testing Trajectories:")
@@ -198,30 +185,9 @@ def task3_evaluation(models, res_dir):
     # Plot error distributions
     plot_error_distributions(
         in_dist_results,
-        ood_results, 
+        ood_results,
         save_path=res_dir / 'error_distributions.png'
     )
-    
-    # Plot trajectory grids for OOD data
-    u0, uT = ood_data
-    custom_input = torch.stack((u0, torch.linspace(0, 1, u0.shape[1]).expand(u0.shape)), dim=-1)
-    library_input = torch.stack((u0, torch.linspace(0, 1, u0.shape[1]).expand(u0.shape)), dim=1).unsqueeze(-1)
-    
-    for name, model in models.items():
-        model_type = 'library' if 'Library' in name else 'custom'
-        input_data = library_input if model_type == 'library' else custom_input
-        output_format = uT.unsqueeze(1).unsqueeze(-1) if model_type == 'library' else uT
-        
-        plot_trajectory_grid(
-            input_data,
-            output_format,
-            model,
-            individual_errors=ood_results[name]['individual_errors'],
-            predictions=ood_results[name]['predictions'],
-            save_path=res_dir / f'ood_trajectory_grid_{name.lower().replace(" ", "_")}.png',
-            model_type=model_type,
-            title=f"Wave Solutions: {name} (OOD)"
-        )
     
     return in_dist_results, ood_results
 
@@ -238,9 +204,16 @@ def main():
     
     models = {
         'Custom FNO': load_model(custom_experiments[-1], 'custom'),
-        'Library FNO': load_model(library_experiments[-1], 'library')
+        # 'Library FNO': load_model(library_experiments[-1], 'library')
     }
-    
+
+    results, (u0, uT) = evaluate_models(models, "data/test_sol.npy")
+
+    print(f"\nAverage Relative L2 Error Over {u0.shape[0]} Testing Trajectories (resolution {u0.shape[1]}):")
+    print("-" * 50)
+    for name, result in results.items():
+        print(f"{name}: {result['error']:.2f}%")
+
     print(f"Loading Custom FNO from: {custom_experiments[-1]}")
     print(f"Loading Library FNO from: {library_experiments[-1]}")
     

@@ -100,63 +100,6 @@ def plot_combined_training_history(custom_dir: Path, library_dir: Path, save_dir
                bbox_inches='tight', dpi=300)
     plt.close()
 
-def plot_trajectory_grid(input_test: torch.Tensor, 
-                        output_test: torch.Tensor, 
-                        model: torch.nn.Module,
-                        individual_errors: List[float],  # Now in percentage form
-                        predictions: torch.Tensor,
-                        save_path: Path,
-                        model_type: str = 'custom',
-                        num_plots: int = 128,
-                        grid_size: tuple = (8, 16),
-                        title: Optional[str] = None) -> None:
-    with torch.no_grad():
-        fig = plt.figure(figsize=(40, 22))
-        gs = fig.add_gridspec(grid_size[0]+1, grid_size[1], height_ratios=[0.2] + [1]*grid_size[0])
-        
-        title_ax = fig.add_subplot(gs[0, :])
-        title_ax.set_visible(False)
-        fig.suptitle(title if title else 'Wave Solutions: True vs Predicted', fontsize=20, y=0.98, weight='bold')
-        
-        for idx in range(num_plots):
-            i, j = idx // grid_size[1], idx % grid_size[1]
-            ax = fig.add_subplot(gs[i+1, j])
-            
-            if model_type == 'library':
-                x_coords = input_test[idx, 1, :, 0].detach()
-                true_sol = output_test[idx, 0, :, 0].detach()
-                pred_sol = predictions[idx].detach()
-            else:
-                x_coords = input_test[idx, :, 1].detach()
-                true_sol = output_test[idx].detach()
-                pred_sol = predictions[idx].detach()
-            
-            ax.grid(True, which="both", ls=":", alpha=0.3)
-            ax.plot(x_coords, true_sol, label="True", c="#1f77b4", lw=1.5)
-            ax.plot(x_coords, pred_sol, label="Predicted", c="#ff7f0e", lw=1.5, ls='--')
-            
-            ax.set_title(f'Trajectory {idx+1}\nError: {individual_errors[idx]:.2f}%', 
-                        fontsize=10, 
-                        pad=5)
-            
-            if i != grid_size[0]-1:
-                ax.set_xticks([])
-            if j != 0:
-                ax.set_yticks([])
-            
-            if idx == 0:
-                ax.legend(fontsize=8, loc='upper right')
-        
-        # Average of individual percentage errors (they are already properly computed)
-        avg_error = sum(individual_errors[:num_plots]) / num_plots
-        fig.text(0.5, 0.02, f'Average Relative L2 Error: {avg_error:.2f}%', 
-                ha='center', fontsize=14)
-        
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.95, bottom=0.05)
-        
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
-        plt.close()
 
 def plot_resolution_comparison(models: Dict[str, torch.nn.Module], 
                              data_dict: Dict,
@@ -364,104 +307,107 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]],
 
 
 def plot_error_distributions(in_dist_results, ood_results, save_path):
-   fig = plt.figure(figsize=(16, 12))
-   gs = fig.add_gridspec(2, 2, hspace=0.4)
-   
-   model_colors = {
-       'Custom FNO': '#1f77b4',
-       'Library FNO': '#ff7f0e'
-   }
-   
-   stat_styles = {
-       'mode': '--',
-       'mean': '-', 
-       'median': ':',
-   }
-   
-   # First pass to determine global axis limits
-   all_errors = []
-   max_density = 0
-   for model in ['Custom FNO', 'Library FNO']:
+    fig = plt.figure(figsize=(16, 12))
+    gs = fig.add_gridspec(2, 2, hspace=0.4)
+
+    model_colors = {
+        'Custom FNO': '#1f77b4',
+        'Library FNO': '#ff7f0e'
+    }
+
+    stat_styles = {
+        'mode': '--',
+        'mean': '-', 
+        'median': ':',
+    }
+
+    # First pass to determine global axis limits
+    all_errors = []
+    max_density = 0
+    #    for model in ['Custom FNO', 'Library FNO']:
+    for model in ['Custom FNO']:
+
        for results in [in_dist_results, ood_results]:
            errors = np.array(results[model]['individual_errors'])
            all_errors.extend(errors)
            counts, _ = np.histogram(errors, bins=30, density=True)
            max_density = max(max_density, np.max(counts))
 
-   global_xlim = (0, np.ceil(max(all_errors)))
-   global_ylim = (0, max_density * 1.2)  # Add 20% padding for labels
-   
-   # Add model labels on right side
-   plt.figtext(0.95, 0.75, 'Custom FNO', color=model_colors['Custom FNO'], rotation=270, fontsize=14, weight='bold')
-   plt.figtext(0.95, 0.25, 'Library FNO', color=model_colors['Library FNO'], rotation=270, fontsize=14, weight='bold')
+    global_xlim = (0, np.ceil(max(all_errors)))
+    global_ylim = (0, max_density * 1.2)  # Add 20% padding for labels
 
-   # Add distribution type labels at top
-   plt.figtext(0.25, 0.95, 'In-Distribution Data', fontsize=15, weight='bold', ha='center')
-   plt.figtext(0.75, 0.95, 'Out-of-Distribution Data', fontsize=15, weight='bold', ha='center')
+    # Add model labels on right side
+    plt.figtext(0.95, 0.75, 'Custom FNO', color=model_colors['Custom FNO'], rotation=270, fontsize=14, weight='bold')
+    plt.figtext(0.95, 0.25, 'Library FNO', color=model_colors['Library FNO'], rotation=270, fontsize=14, weight='bold')
 
-   for model_idx, model_name in enumerate(['Custom FNO', 'Library FNO']):
-       stat_lines = []
-       stat_labels = []
-       for dist_idx, results in enumerate([in_dist_results, ood_results]):
-           ax = fig.add_subplot(gs[model_idx, dist_idx])
-           
-           errors = np.array(results[model_name]['individual_errors'])
-           plt.hist(errors, bins=30, density=True, alpha=0.5,
-                   color=model_colors[model_name],
-                   edgecolor='white', linewidth=1)
-           
-           counts, bin_edges = np.histogram(errors, bins=30, density=True)
-           bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-           
-           stats = {
-               'mode': bin_centers[np.argmax(counts)],
-               'mean': np.mean(errors),
-               'median': np.median(errors)
-           }
-           
-           for stat, style in stat_styles.items():
-               stat_value = stats[stat]
-               line = plt.axvline(stat_value, color=model_colors[model_name],
+    # Add distribution type labels at top
+    plt.figtext(0.25, 0.95, 'In-Distribution Data', fontsize=15, weight='bold', ha='center')
+    plt.figtext(0.75, 0.95, 'Out-of-Distribution Data', fontsize=15, weight='bold', ha='center')
+
+    # FIXME: enumerate(['Custom FNO', 'Library FNO'])
+    for model_idx, model_name in enumerate(['Custom FNO']):
+        stat_lines = []
+        stat_labels = []
+        for dist_idx, results in enumerate([in_dist_results, ood_results]):
+            ax = fig.add_subplot(gs[model_idx, dist_idx])
+            
+            errors = np.array(results[model_name]['individual_errors'])
+            plt.hist(errors, bins=30, density=True, alpha=0.5,
+                    color=model_colors[model_name],
+                    edgecolor='white', linewidth=1)
+            
+            counts, bin_edges = np.histogram(errors, bins=30, density=True)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            
+            stats = {
+                'mode': bin_centers[np.argmax(counts)],
+                'mean': np.mean(errors),
+                'median': np.median(errors)
+            }
+            
+            for stat, style in stat_styles.items():
+                stat_value = stats[stat]
+                line = plt.axvline(stat_value, color=model_colors[model_name],
                                 linestyle=style, alpha=1.0, linewidth=2)
-               if dist_idx == 0:
-                   stat_lines.append(line)
-                   stat_labels.append(stat.capitalize())
-               
-               # Add mean value label with background
-               if stat == 'mean':
-                   label = f'Mean: {stat_value:.2f}%'
-                   bbox_props = dict(
-                       boxstyle='round,pad=0.5',
-                       fc='white',
-                       ec=model_colors[model_name],
-                       alpha=0.8
-                   )
-                   plt.text(stat_value + 0.5, global_ylim[1] * 0.8,
-                          label,
-                          color=model_colors[model_name],
-                          fontsize=12,
-                          fontweight='bold',
-                          bbox=bbox_props,
-                          horizontalalignment='left')
-           
-           plt.xlabel('Test Error (%)', fontsize=11)
-           plt.ylabel('Density', fontsize=11)
-           plt.grid(True, alpha=0.2)
-           plt.xlim(global_xlim)
-           plt.ylim(global_ylim)
-           ax.spines['top'].set_visible(False)
-           ax.spines['right'].set_visible(False)
+                if dist_idx == 0:
+                    stat_lines.append(line)
+                    stat_labels.append(stat.capitalize())
+                
+                # Add mean value label with background
+                if stat == 'mean':
+                    label = f'Mean: {stat_value:.2f}%'
+                    bbox_props = dict(
+                        boxstyle='round,pad=0.5',
+                        fc='white',
+                        ec=model_colors[model_name],
+                        alpha=0.8
+                    )
+                    plt.text(stat_value + 0.5, global_ylim[1] * 0.8,
+                            label,
+                            color=model_colors[model_name],
+                            fontsize=12,
+                            fontweight='bold',
+                            bbox=bbox_props,
+                            horizontalalignment='left')
+            
+            plt.xlabel('Test Error (%)', fontsize=11)
+            plt.ylabel('Density', fontsize=11)
+            plt.grid(True, alpha=0.2)
+            plt.xlim(global_xlim)
+            plt.ylim(global_ylim)
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
 
-       fig.legend(stat_lines, stat_labels,
-                 title='Statistics',
-                 loc='upper right',
-                 bbox_to_anchor=(0.93, 0.93 - 0.5 * model_idx),
-                 labelcolor='#404040')
+        fig.legend(stat_lines, stat_labels,
+                    title='Statistics',
+                    loc='upper right',
+                    bbox_to_anchor=(0.93, 0.93 - 0.5 * model_idx),
+                    labelcolor='#404040')
 
-   plt.subplots_adjust(right=0.9, top=0.9)
-   plt.savefig(save_path.parent / 'ood_error_distribution_comparison.png', 
-               dpi=300, bbox_inches='tight')
-   plt.close()
+    plt.subplots_adjust(right=0.9, top=0.9)
+    plt.savefig(save_path.parent / 'ood_error_distribution_comparison.png', 
+                dpi=300, bbox_inches='tight')
+    plt.close()
 
 #============================================
 #  Time-dependent Visualization
