@@ -12,297 +12,228 @@ import json
 
 from fno import FNO1d
 from visualization import (
+    plot_training_history,
     plot_ibvp_sol_heatmap,
     plot_trajectory_at_time,
     plot_l2_error_by_timestep
 )
 
+from utils import (
+load_model,
+print_bold
+)
+from torch.utils.data import DataLoader
+
 from enum import Enum, auto
+from dataset import All2All, OneToOne
 
-class InferenceStrategy(Enum):
-    DIRECT = "direct"
-    AUTOREGRESSIVE = "autoregressive"
+# FIXME: move it else-where
+from evaluate import evaluate_direct
 
-def evaluate_model(model,
-                  data_path, 
-                  strategy: InferenceStrategy,
-                  t_i: list,
-                  t_tot: float = 1.0):
-    """
-    Evaluate model using specified inference strategy.
-    
-    Args:
-        model: The FNO model to evaluate
-        data_path: Path to the data file
-        strategy: InferenceStrategy.DIRECT or InferenceStrategy.AUTOREGRESSIVE
-        t_i: List of time points [t_0, t_1, ..., t_n] where t_0 is initial time
-    """
-    device = next(model.parameters()).device
-    data = np.load(data_path)
+
+
+def evaluate_autoregressive(model, data_path, timesteps, batch_size=5, base_dt = 0.25, device="cuda"):
     model.eval()
+    strategy = All2All("validation", 
+                       data_path=data_path,
+                       time_pairs=[(0, 4)],
+                       dt=base_dt,
+                       device=device)
+
+    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
     
-    # Get initial conditions at t = 0
-    u_0 = data[:, 0, :]
-    n_traj = len(u_0)
-    
-    predictions_dict = {}
-    errors_dict = {}
+    all_predictions = []
+    all_errors = torch.tensor([], device=device)
+    u0, uT = [], []
     
     with torch.no_grad():
-        if strategy == InferenceStrategy.DIRECT:
-            target_times = t_i[1:]  # Exclude t_0
+        for batch_input, batch_target in test_loader:
+            batch_input = batch_input.to(device)
+            batch_target = batch_target.to(device)
             
-            for t_target in target_times:
-                predictions = np.zeros_like(u_0)
-                relative_l2_errors = np.zeros(n_traj)
-
-                for i in range(n_traj):
-                    # Create input tensor with current state and time difference
-                    state = torch.from_numpy(u_0[i]).float().unsqueeze(0)  # [1, 64]
-                    time_diff = torch.full_like(state, t_target)  # [1, 64]
-                    x = torch.stack([state, time_diff], dim=1)  # [1, 2, 64]
-                    x = x.to(device)
-                    
-                    # Direct inference to target time
-                    t = torch.tensor([t_target]).float().to(device)
-                    u_pred = model(x, t)
-                    u_pred = u_pred.cpu().squeeze().numpy()
-                    predictions[i] = u_pred
-                    
-                    # Compute error
-                    if t_target > t_tot:
-                        raise ValueError("t_target {t_target} > t_tot {t_tot} not supported by dataset at {data_path}")
-
-                    training_dt = t_tot / (data.shape[1] - 1)
-                    time_idx = int(t_target // training_dt)
-
-                    u_true = data[i, time_idx]
-                    error = np.linalg.norm(u_pred - u_true) / np.linalg.norm(u_true)
-                    relative_l2_errors[i] = error
-                
-                predictions_dict[t_target] = predictions
-                errors_dict[t_target] = np.mean(relative_l2_errors) * 100
-                print(f"Direct inference - Average relative L2 error at t_{t_i.index(t_target)} = {t_target:.2f}: {errors_dict[t_target]:.4f}%")
-        
-        else:  # AUTOREGRESSIVE
-            current_states = torch.from_numpy(u_0).float()  # [n_traj, 64]
-            predictions_dict[t_i[0]] = current_states.cpu().numpy()
+            u_start = batch_input[..., 0]
+            v_start = batch_input[..., 1]  # This is already central-differenced from All2All
+            x_grid = batch_input[..., 2]
             
-            for i in range(len(t_i) - 1):
-                t_current, t_next = t_i[i], t_i[i+1]
-                dt = t_next - t_current
-                next_predictions = torch.zeros_like(current_states)
+            u_current = u_start
+            v_current = v_start
+            
+            for step_size in timesteps:
+                dt = torch.full_like(u_start, base_dt * step_size, device=device)
                 
-                for j in range(n_traj):
-                    # Create input tensor with current state and time difference
-                    state = current_states[j].unsqueeze(0)  # [1, 64]
-                    time_diff = torch.full_like(state, dt)  # [1, 64]
-                    x = torch.stack([state, time_diff], dim=1)  # [1, 2, 64]
-                    x = x.to(device)
-                    
-                    t = torch.tensor([dt]).float().to(device)
+                current_input = torch.stack(
+                    (u_current, v_current, x_grid, dt), dim=-1
+                )
+                
+                u_next = model(current_input).squeeze(-1)
+                # Forward difference for velocity (matching All2All's treatment of initial velocity)
+                v_next = (u_next - u_current) / dt
+                u_current = u_next
+                v_current = v_next
+            
+            predictions = u_current
+            targets = batch_target.squeeze(-1)
+            
+            u0.append(batch_input[..., 0].cpu())
+            uT.append(targets.cpu())
+            
+            individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
+            
+            all_predictions.append(predictions.cpu())
+            all_errors = torch.cat([all_errors, individual_abs_errors])
 
-                    u_pred = model(x, t)
-                    u_pred = u_pred.cpu().squeeze()
-                    next_predictions[j] = u_pred
-                
-                predictions_dict[t_next] = next_predictions.cpu().numpy()
-                
-                time_idx = int(t_next * (data.shape[1] - 1))
-                u_true = data[:, time_idx]
-                
-                relative_l2_errors = np.zeros(n_traj)
-                for j in range(n_traj):
-                    error = np.linalg.norm(
-                        next_predictions[j].cpu().numpy() - u_true[j]
-                    ) / np.linalg.norm(u_true[j])
-                    relative_l2_errors[j] = error
-                
-                errors_dict[t_next] = np.mean(relative_l2_errors) * 100
-                print(f"Autoregressive - Average relative L2 error at t_{i+1} = {t_next:.2f}: {errors_dict[t_next]:.4f}%")
-                
-                current_states = next_predictions
+    predictions = torch.cat(all_predictions, dim=0)
+    average_error = all_errors.mean().item() * 100
     
-    return predictions_dict, errors_dict
-
-def task4_evaluation(model, training_mode, res_dir):
-    """
-    # Task 4: All2All Training
-    1. Use 64 trajectories from the training dataset.
-    2. Use all provided time snapshots (t = 0.0, 0.25, 0.50, 0.75, 1.0) 
-       to train a time-dependent FNO model.
-    3. ...
-    4. Test on the test_sol.npy dataset at t=1.0
-    5. ...
-    6. ...
-    """
-    print(f"\n\033[1mTask 4: Testing on {training_mode} Training:\033[0m")
-
-    # Define time points for evaluation (only t=0 and t=1)
-    t_i = [0.0, 0.25, 0.5, 0.75, 1.0]
-
-    # 4.1 Evaluate at t = 1.0 using direct inference
-    predictions1, errors1 = evaluate_model(
-        model,
-        data_path="data/test_sol.npy",
-        strategy=InferenceStrategy.DIRECT,
-        t_i=t_i
-    )
-
-    # 4.2 Evaluate at t = 1.0 using autoregressive inference
-    predictions2, errors2 = evaluate_model(
-        model,
-        data_path="data/test_sol.npy",
-        strategy=InferenceStrategy.AUTOREGRESSIVE,
-        t_i=[0.0, 0.5, 1.0]
-    )
-
-
-    # Visualize
-    test_data = np.load("data/test_sol.npy")
-    plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="task4_trajectory_direct.png")
-    plot_trajectory_at_time(predictions2, test_data, res_dir=res_dir, filename="task4_trajectory_ar.png")
-
-    # Possibly print or compare errors
-    print("\n\033[1mTODO: Compare error to the one from Task 1.\033[0m")
-
-    return predictions1
-
-
-def bonus_task_evaluation(model, training_mode, res_dir):
-    """
-    # Bonus Task
-    1. Direct prediction at multiple timesteps: t=0.25, 0.50, 0.75, 1.0
-    2. Autoregressive predictions
-    3. Compare performance
-    4. Evaluate on OOD
-    5. Visualize with heatmaps
-    """
-    print(f"\n\033[1mBonus Task: Evaluate {training_mode} Training on Different Timesteps:\033[0m")
-    
-    # Define time points t_i
-    t_i = [0.0, 0.25, 0.50, 0.75, 1.0]  # t_0 through t_4
-    
-    # 1. Direct prediction at multiple timesteps
-    print("\n\033[1mDirect Inference at multiple timesteps\033[0m")
-    predictions1, errors1 = evaluate_model(
-        model,
-        data_path="data/test_sol.npy",
-        strategy=InferenceStrategy.DIRECT,
-        t_i=t_i
-    )
-
-    # 2. Autoregressive prediction
-    print("\n\033[1mAutoregressive Inference\033[0m")
-    predictions2, errors2 = evaluate_model(
-        model,
-        data_path="data/test_sol.npy",
-        strategy=InferenceStrategy.AUTOREGRESSIVE,
-        t_i=t_i
-    )
-
-    # 3. Visualize and compare AR vs Direct
-    print("\n\033[1mPlotting Average Relative L2 Error Across Time\033[0m")
     results = {
-        'Direct': {'errors': list(errors1.values())},
-        'AR': {'errors': list(errors2.values())}
+        'predictions': predictions,
+        'error': average_error,
+        'individual_errors': (all_errors * 100).cpu().tolist()
     }
-    plot_l2_error_by_timestep(results, t_i[1:], res_dir)  # Exclude t_0
+    
+    u0 = torch.cat(u0, dim=0)
+    uT = torch.cat(uT, dim=0)
+    
+    return results, (u0, uT)
 
-    # 4. OOD Evaluation - Print results for both methods
-    print("\n\033[1mTesting OOD Performance:\033[0m")
-    # OOD Direct
-    print("\nDirect Inference on OOD data:")
-    ood_direct_pred, ood_direct_errors = evaluate_model(
+
+def task4_evaluation(model, res_dir):
+    print_bold("Task 4: Evaluation of Time-dependent Training at End Time (t = 1.0)")
+
+    print_bold("1. Direct Evaluation")    
+    result_a2a, data_a2a = evaluate_direct(model, "data/test_sol.npy", 
+                                        time_pairs=[(0, 4)], 
+                                        strategy="all2all")
+    print(f"All2All Evaluation (t=1.0)  Error: {result_a2a['error']:.2f}%")
+    
+    # 3. Autoregressive evaluation with different timestep combinations for nt = 4 in total
+    print_bold("2. Autoregressive Evaluation (t=1.0):")
+    combinations = [
+        [1,1,1,1],
+        [1,1,2],
+        [1,2,1],
+        [2,1,1],
+        [2,2],
+        [1,3],
+        [3,1],
+        [4]
+    ]
+    
+    ar_results = {}
+    print("\nAutoregressive Results:")
+    print(f"{'Timesteps':<20} {'Error %':<10}")
+    print("-" * 25)
+    
+    for timesteps in combinations:
+        result, _ = evaluate_autoregressive(model, "data/test_sol.npy", timesteps=timesteps)
+        timestep_str = '+'.join(map(str, timesteps))
+        ar_results[timestep_str] = result['error']
+        if timestep_str == '4':
+            if timestep_str == '4':
+                print(f"{timestep_str} (equi. to direct)  {result['error']:.2f}%")
+            else:
+                print(f"{timestep_str:<20} {result['error']:.2f}%")
+        else:
+            print(f"{timestep_str:<20} {result['error']:.2f}%")
+        
+    return result_a2a['predictions']
+
+
+def bonus_task_evaluation(model, res_dir):
+    """
+    Bonus Task evaluation using the new evaluate_direct with all2all strategy
+    """
+    print_bold(f"Bonus Task: Evaluate All2All Training Across Time:")
+    
+    print_bold("In-distribution Data Results:")
+    for end_idx in [1,2,3,4]:
+        print(f"End time: t = {end_idx * 0.25}")
+        result, test_data = evaluate_direct(
+            model,
+            data_path="data/test_sol.npy",
+            strategy="all2all",
+            time_pairs=[(0, end_idx)]
+        )
+
+        # Print result for each end time in {0.25, 0.5, 0.75, 1.0}
+        print(f"Average Relative L2 Error: {result['error']:.2f}%")
+        print("-" * 50)
+
+    # OOD evaluation (t = 1.0)
+    ood_result, ood_data = evaluate_direct(
         model,
         data_path="data/test_sol_OOD.npy",
-        strategy=InferenceStrategy.DIRECT,
-        t_i=[0.0, 1.0]  # Only initial and final time
+        strategy="all2all",
+        time_pairs=[(0,1)]
     )
     
-    # OOD Autoregressive
-    print("\nAutoregressive Inference on OOD data:")
-    ood_ar_pred, ood_ar_errors = evaluate_model(
-        model,
-        data_path="data/test_sol_OOD.npy",
-        strategy=InferenceStrategy.AUTOREGRESSIVE,
-        t_i=t_i  # Full sequence of time points
-    )
+    print_bold("OOD Data Results:")
+    print(f"Resolution: {ood_data[0].shape}")
+    print(f"Average Relative L2 Error: {ood_result['error']:.2f}%")
 
     # Visualizations
-    test_data = np.load("data/test_sol.npy")
-    fig1 = plot_trajectory_at_time(predictions1, test_data, res_dir=res_dir, filename="bonus_direct_inference.png")
-    fig2 = plot_trajectory_at_time(predictions2, test_data, res_dir=res_dir, filename="bonus_ar_inference.png")
+    # plot_trajectory_at_time(
+    #     result['predictions'], 
+    #     test_data, 
+    #     res_dir=res_dir, 
+    #     filename="bonus_test_data.png"
+    # )
+    
+    # plot_trajectory_at_time(
+    #     ood_result['predictions'], 
+    #     ood_data, 
+    #     res_dir=res_dir, 
+    #     filename="bonus_ood_data.png"
+    # )
 
-    # Space-time heatmap
-    print("\n\033[1mVisualize with heatmap for direct inference\033[0m")
+    # Space-time heatmap for test data
+    print_bold("Visualize spatio-temporal evolution with heatmap")
+    result, test_data = evaluate_direct(
+        model,
+        data_path="data/test_sol.npy",
+        strategy="all2all"
+    )
+
     plot_ibvp_sol_heatmap(
         "data/test_sol.npy",
         model,
-        predictions1,
+        result['predictions'],
         trajectory_indices=[0, 127],
-        res_dir=res_dir,
-        figsize=(24, 5)
+        res_dir=res_dir
     )
-    return predictions1, predictions2
+
+    return result['predictions'], ood_result['predictions']
 
 
 def main():
-    # Get device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"Using device: {device}")
-    if torch.cuda.is_available():
-        print(f"GPU device: {torch.cuda.get_device_name(0)}")
-
-    # Directory for saving results
-    res_dir = Path("results_time")
+    res_dir = Path("results/time")
     res_dir.mkdir(exist_ok=True)
-    
-    # Find the newest experiment folder under 'checkpoints/custom_fno/time'
-    experiment_dirs = sorted(
-        Path("checkpoints/custom_fno/time").glob("fno_*"),
-        key=lambda d: d.stat().st_mtime  # sort by last-modified time
-    )
 
-    if not experiment_dirs:
-        print("No experiment directories found in 'checkpoints/custom_fno/time' matching 'fno_*'.")
-        return
+    # Load time-dependent FNO models trained via one-to-all (vanilla) training
+    models = {}
+    for data_mode in ['onetoall', 'all2all']:
+        fno_with_time_folders = sorted(Path(f"checkpoints/{data_mode}").glob("fno_*"), key=lambda d: d.stat().st_mtime)
 
-    checkpoint_dir = experiment_dirs[-1]  # The last one is the newest
-    print(f"Evaluating the newest experiment: {checkpoint_dir}")
+        if not fno_with_time_folders:
+            raise ValueError("No experiment directories found. Please run training first.")
 
-    # Load config from the newest experiment folder
-    config_file = checkpoint_dir / "training_config.json"
-    if not config_file.is_file():
-        raise FileNotFoundError(f"No config file found at: {config_file}")
+        # Load model from checkpoint
+        model = load_model(fno_with_time_folders[-1])
+        print(f"Loading Custom FNO from: {fno_with_time_folders[-1]}")
 
-    with open(config_file, "r") as f:
-        config_dict = json.load(f)
+        models[data_mode] = model  # Store the loaded model in the models dictionary
 
-    model_config = config_dict["model_config"]
-    training_config = config_dict["training_config"]
-    training_mode = training_config["training_mode"]
+        print("Plotting training history...")
+        plot_training_history(fno_with_time_folders[-1])
 
-    # Initialize the model from config
-    model_args = {k: v for k, v in model_config.items() if k != "model_type"}
-    model = FNO1d(**model_args)
 
-    # Load the model weights and move to device
-    model_path = checkpoint_dir / "best_model.pth"
-    if not model_path.is_file():
-        raise FileNotFoundError(f"No model checkpoint file at: {model_path}")
+    # Run evaluate at t = 1.0 using both one-to-
+    task4_results = task4_evaluation(models['onetoall'], res_dir)
+    task4_results = task4_evaluation(models['all2all'], res_dir)
 
-    # Load checkpoint dictionary
-    checkpoint = torch.load(model_path, map_location=device)
-    # Extract just the model state dict
-    model.load_state_dict(checkpoint['model_state_dict'])  # Changed this line
-    model = model.to(device)
-    model.eval()
-
-    # Evaluate tasks
-    print(f"Running evaluations in {checkpoint_dir} ...")
-    task4_results = task4_evaluation(model, training_mode, res_dir)
-    bonus_results = bonus_task_evaluation(model, training_mode, res_dir)
+    # Using only all2all trained model here
+    bonus_results = bonus_task_evaluation(models['all2all'], res_dir)
+    bonus_results = bonus_task_evaluation(models['onetoall'], res_dir)
 
     print(f"\nAll plots have been saved in the '{res_dir}' directory.")
 
