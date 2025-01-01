@@ -21,7 +21,7 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 class OneToOne(Dataset):
     def __init__(self, 
                 which,
-                training_samples=64, 
+                training_samples=64,
                 data_path="data/train_sol.npy",
                 lx=1.0, 
                 dt=0.25, 
@@ -88,16 +88,18 @@ class OneToOne(Dataset):
         dt = torch.full_like(u_start, self.dt * (self.end_idx - self.start_idx), device=u_start.device)
         x_grid = self.x_grid.to(u_start.device)
         input_data = torch.stack((u_start, v_start, x_grid, dt), dim=-1)
-        output_data = self.u_end[idx].unsqueeze(-1)        
+        output_data = self.u_end[idx].unsqueeze(-1)
         return input_data, output_data
 
 class All2All(Dataset):
     def __init__(self, 
                 which,
-                training_samples=64, 
+                training_samples=64,
                 data_path="data/train_sol.npy",
                 lx=1.0, 
                 dt=0.25,
+                data_mode="all2all",
+                time_pairs=None,
                 device='cuda'):
         # Load and type dataset consistently
         dataset = torch.from_numpy(np.load(data_path)).type(torch.float32)
@@ -140,12 +142,14 @@ class All2All(Dataset):
         self.lx = lx
         self.x_grid = torch.linspace(0, self.lx, self.nx, device=self.device)
         
-        # Generate all possible time pairs (ensuring t_end >= t_start)
-        self.time_pairs = [(i, j) for i in range(self.nt) 
-                          for j in range(i, self.nt)]
+        if not time_pairs:
+            self.time_pairs = self._generate(data_mode)
+        else:
+            self.time_pairs = time_pairs
+
         self.len_times = len(self.time_pairs)
 
-        print(f"Generated {len(self.time_pairs)} time pairs")
+        print(f"Using {len(self.time_pairs)} time pair(s) per trajectory")
         print(f"{self.time_pairs}")
         
         # Pre-compute dt values for all time pairs
@@ -153,7 +157,21 @@ class All2All(Dataset):
             [(j - i) * self.dt for i, j in self.time_pairs],
             device=self.device
         )
+
+    def _generate(self, data_mode):
+        # Generate all possible time pairs (ensuring t_end >= t_start)
+        if data_mode == "all2all":
+            print(f"Using all2all strategy")
+            pairs = [(i, j) for i in range(self.nt)
+                            for j in range(i, self.nt)]
+        elif data_mode == "onetoall":
+            print(f"Using one-to-all (vanilla) strategy")
+            pairs = [(0, j) for j in range(self.nt)]
+        else:
+            raise ValueError("Data mode must be 'all2all' or 'onetoall'")
         
+        return pairs
+
     def __len__(self):
         return self.length * self.len_times
     
@@ -195,6 +213,10 @@ def main():
     # Initializing all2all loading for all2all strategy
     training_set = DataLoader(All2All("training"), batch_size=batch_size, shuffle=True)
     testing_set = DataLoader(All2All("validation"), batch_size=batch_size, shuffle=False)
+
+    # Using custom time pairs
+    training_set = DataLoader(All2All("training", time_pairs = [(0, 4)]), batch_size=batch_size, shuffle=True)
+    testing_set = DataLoader(All2All("validation", time_pairs = [(0, 4)]), batch_size=batch_size, shuffle=False)
 
 if __name__ == "__main__":
    main()
