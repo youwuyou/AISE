@@ -9,6 +9,12 @@ from datetime import datetime
 from pathlib import Path
 from fno import FNO1d
 
+def print_bold(text: str) -> None:
+    """Print a bold header text."""
+    BOLD = "\033[1m"
+    RESET = "\033[0m"
+    print(f"\n{BOLD}{text}{RESET}")
+
 def get_experiment_name(config):
     """Create a unique experiment name based on key parameters and timestamp"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -34,7 +40,7 @@ def load_model(checkpoint_dir: str) -> torch.nn.Module:
         config_dict = json.load(f)
     
     model_config = config_dict['model_config']
-    model_args = {k: v for k, v in model_config.items() if k != 'model_type'}
+    model_args = {k: v for k, v in model_config.items()}
     model = FNO1d(**model_args)
     
     model.load_state_dict(torch.load(checkpoint_dir / 'model.pth', weights_only=True))    
