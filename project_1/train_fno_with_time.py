@@ -1,5 +1,8 @@
 """
 Training time-dependent FNO
+- All2All class is used for loading training set
+    - supports all2all time pairs loading O(k²)
+    - supports one-to-all (vanilla) time pairs loading O(k)
 """
 
 import json
@@ -19,7 +22,7 @@ from fno import FNO1d
 from dataset import All2All
 
 
-def main(data_mode="onetoone"):
+def main(data_mode="all2all"):
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -34,27 +37,25 @@ def main(data_mode="onetoone"):
         torch.cuda.manual_seed(0)
 
     # Model configuration
-    # checkpoints/custom_fno/fno_m30_w64_d4_lr0.001_20241227_190139
-    # 11.99% resolution 32; 4.92% resolution 64
     model_config = {
         "depth": 4,
         "modes": 30,
         "width": 64,
         "nfun": 2,
         "time_dependent": True,
-        "model_type": "custom",
         "device": device
     }
     
     # Training configuration
     training_config = {
+        "data_mode": data_mode,
         'n_train': 64,
         'batch_size': 5,
         'learning_rate': 0.001,
-        'epochs': 100,
+        'epochs': 400,
         'step_size': 100,
         'gamma': 0.1,
-        'patience': 10,
+        'patience': 40,
         'freq_print': 1,
         'device': device
     }
@@ -64,7 +65,7 @@ def main(data_mode="onetoone"):
 
     # Create experiment directory
     experiment_name = get_experiment_name(naming_config)
-    checkpoint_dir = Path("checkpoints/custom_fno/time") / experiment_name
+    checkpoint_dir = Path(f"checkpoints/{data_mode}") / experiment_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # Save full configuration
@@ -74,24 +75,18 @@ def main(data_mode="onetoone"):
     }
     save_config(config, checkpoint_dir)
 
-    #================================
-    # with custom All2All dataset loading
-    #================================
+    #==================================================
+    # with All2All or One-to-All (Vanilla) data loading
+    #==================================================
     # Dataset selection
     batch_size = training_config['batch_size']
-    if data_mode == "onetoone":
-        DataClass = OneToOne
-    elif data_mode == "all2all":
-        DataClass = All2All
-    else:
-        raise ValueError("data_mode must be 'onetoone' or 'all2all'")
 
     print(f"Training strategy specified as {data_mode}")
-    training_set = DataLoader(DataClass("training"), batch_size=batch_size, shuffle=True)
-    testing_set = DataLoader(DataClass("validation"), batch_size=batch_size, shuffle=False)    
+    training_set = DataLoader(All2All("training", data_mode=data_mode), batch_size=batch_size, shuffle=True)
+    testing_set = DataLoader(All2All("validation", data_mode=data_mode), batch_size=batch_size, shuffle=False)    
 
     # Initialize model with device
-    model = FNO1d(**{k: v for k, v in model_config.items() if k != 'model_type'})
+    model = FNO1d(**{k: v for k, v in model_config.items()})
 
     # Train model
     trained_model, training_history = train_model(
@@ -106,4 +101,5 @@ def main(data_mode="onetoone"):
     print(f"Best validation loss: {training_history['best_val_loss']:.6f} at epoch {training_history['best_epoch']}")
 
 if __name__ == "__main__":
-    main("all2all")  # or main("all2all")
+    main("all2all")
+    # main("onetoall")

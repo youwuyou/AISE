@@ -30,20 +30,19 @@ def main():
         torch.cuda.manual_seed(0)
 
     # Model configuration
-    # checkpoints/custom_fno/fno_m30_w64_d4_lr0.001_20241227_190139
-    # 11.99% resolution 32; 4.92% resolution 64
     model_config = {
         "depth": 4,
         "modes": 30,
         "width": 64,
         "nfun": 2,
         "time_dependent": False,
-        "model_type": "custom",
         "device": device
     }
 
     # Training configuration
+    data_mode = "onetoone"
     training_config = {
+        "data_mode": data_mode,
         'n_train': 64,
         'batch_size': 5,
         'learning_rate': 0.001,
@@ -60,7 +59,7 @@ def main():
 
     # Create experiment directory
     experiment_name = get_experiment_name(naming_config)
-    checkpoint_dir = Path("checkpoints/custom_fno") / experiment_name
+    checkpoint_dir = Path(f"checkpoints/{data_mode}") / experiment_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # Save full configuration
@@ -78,7 +77,7 @@ def main():
     testing_set  = DataLoader(OneToOne("validation"), batch_size=batch_size, shuffle=False)
 
     # Initialize model with device
-    model = FNO1d(**{k: v for k, v in model_config.items() if k != 'model_type'})
+    model = FNO1d(**{k: v for k, v in model_config.items()})
 
     # Train model
     trained_model, training_history = train_model(
