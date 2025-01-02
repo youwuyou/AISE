@@ -21,13 +21,21 @@ def plot_training_history(experiment_dir: Path, save_dir: Optional[Path] = None)
     
     with open(experiment_dir / 'training_config.json', 'r') as f:
         config = json.load(f)
+        data_mode = config['training_config']['data_mode']
         history = config['training_history']
+
+    if data_mode == "onetoone":
+        data_mode = "One-to-One"
+    elif data_mode == "all2all":
+        data_mode = "All2All"
+    elif data_mode == "onetoall":
+        data_mode = "One-to-All"        
     
     plt.figure(figsize=(10, 6))
     plt.plot(history['train_loss'], label='Training Loss', color='blue', alpha=0.7)
     plt.plot(history['val_loss'], label='Validation Loss', color='red', alpha=0.7)
         
-    plt.title('Training History - Custom FNO')
+    plt.title(f'Training History - FNO ({data_mode})')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.yscale('log')
