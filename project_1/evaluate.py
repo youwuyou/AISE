@@ -162,8 +162,8 @@ def main():
     res_dir.mkdir(exist_ok=True)
 
     data_mode = "onetoone"    
-    fno_folders = sorted(Path(f'checkpoints/{data_mode}').glob('fno_*'))
-    
+    fno_folders = sorted(Path(f'checkpoints/{data_mode}').glob('fno_*'), key=lambda d: d.stat().st_mtime)
+
     if not fno_folders:
         raise ValueError("No experiment directories found. Please run training first.")
     
