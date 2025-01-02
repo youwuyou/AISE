@@ -38,9 +38,9 @@ def main(data_mode="all2all"):
 
     # Model configuration
     model_config = {
-        "depth": 4,
+        "depth": 2,
         "modes": 30,
-        "width": 64,
+        "width": 32,
         "nfun": 2,
         "time_dependent": True,
         "device": device
@@ -52,10 +52,10 @@ def main(data_mode="all2all"):
         'n_train': 64,
         'batch_size': 5,
         'learning_rate': 0.001,
-        'epochs': 400,
-        'step_size': 100,
+        'epochs': 800,
+        'step_size': 300,
         'gamma': 0.1,
-        'patience': 40,
+        'patience': 80,
         'freq_print': 1,
         'device': device
     }
