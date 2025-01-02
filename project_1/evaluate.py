@@ -43,7 +43,6 @@ def evaluate_direct(model,
     elif strategy == "all2all" and not time_pairs:
         strategy = All2All("validation", data_path=data_path, device=device, dt=dt)
     elif strategy == "all2all" and time_pairs:
-        print(f"Using custom time_pairs {time_pairs}")
         strategy = All2All("validation", data_path=data_path, time_pairs =time_pairs, device=device)
     else:
         raise ValueError("Invalid strategy. Please choose either 'onetoone' or 'all2all'.")

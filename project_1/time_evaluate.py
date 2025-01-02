@@ -15,7 +15,7 @@ from visualization import (
     plot_training_history,
     plot_ibvp_sol_heatmap,
     plot_trajectory_at_time,
-    plot_l2_error_by_timestep
+    plot_l2_error_by_timestep,
 )
 
 from utils import (
@@ -24,13 +24,12 @@ print_bold
 )
 from torch.utils.data import DataLoader
 
+from typing import Dict, List
 from enum import Enum, auto
 from dataset import All2All, OneToOne
 
 # FIXME: move it else-where
 from evaluate import evaluate_direct
-
-
 
 def evaluate_autoregressive(model, data_path, timesteps, batch_size=5, base_dt = 0.25, device="cuda"):
     model.eval()
@@ -98,13 +97,11 @@ def evaluate_autoregressive(model, data_path, timesteps, batch_size=5, base_dt =
 
 
 def task4_evaluation(model, res_dir):
-    print_bold("Task 4: Evaluation of Time-dependent Training at End Time (t = 1.0)")
-
     print_bold("1. Direct Evaluation")    
     result_a2a, data_a2a = evaluate_direct(model, "data/test_sol.npy", 
                                         time_pairs=[(0, 4)], 
                                         strategy="all2all")
-    print(f"All2All Evaluation (t=1.0)  Error: {result_a2a['error']:.2f}%")
+    print(f"FNO Evaluation (t=1.0)  Error: {result_a2a['error']:.2f}%")
     
     # 3. Autoregressive evaluation with different timestep combinations for nt = 4 in total
     print_bold("2. Autoregressive Evaluation (t=1.0):")
@@ -210,6 +207,7 @@ def main():
     res_dir.mkdir(exist_ok=True)
 
     # Load time-dependent FNO models trained via one-to-all (vanilla) training
+    print_bold("Task 4: Evaluation of Time-dependent Training at End Time (t = 1.0)")
     models = {}
     for data_mode in ['onetoall', 'all2all']:
         fno_with_time_folders = sorted(Path(f"checkpoints/{data_mode}").glob("fno_*"), key=lambda d: d.stat().st_mtime)
@@ -219,17 +217,15 @@ def main():
 
         # Load model from checkpoint
         model = load_model(fno_with_time_folders[-1])
-        print(f"Loading FNO ({data_mode}) from: {fno_with_time_folders[-1]}")
+        print_bold(f"Loading FNO ({data_mode}) from: {fno_with_time_folders[-1]}")
 
         models[data_mode] = model  # Store the loaded model in the models dictionary
 
         print("Plotting training history...")
         plot_training_history(fno_with_time_folders[-1])
 
-
-    # Run evaluate at t = 1.0 using both one-to-
-    task4_results = task4_evaluation(models['onetoall'], res_dir)
-    task4_results = task4_evaluation(models['all2all'], res_dir)
+        # Run evaluate at t = 1.0 using both one-to-all and all2all model
+        task4_results = task4_evaluation(model, res_dir)
 
     # Using only all2all trained model here
     bonus_results = bonus_task_evaluation(models['all2all'], res_dir)
