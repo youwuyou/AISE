@@ -149,8 +149,9 @@ class All2All(Dataset):
 
         self.len_times = len(self.time_pairs)
 
-        print(f"Using {len(self.time_pairs)} time pair(s) per trajectory")
-        print(f"{self.time_pairs}")
+        # DEBUG: use this to verify time pairs are selected correctly
+        # print(f"Using {len(self.time_pairs)} time pair(s) per trajectory")
+        # print(f"{self.time_pairs}")
         
         # Pre-compute dt values for all time pairs
         self.dt_values = torch.tensor(
