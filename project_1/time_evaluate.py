@@ -219,7 +219,7 @@ def main():
 
         # Load model from checkpoint
         model = load_model(fno_with_time_folders[-1])
-        print(f"Loading Custom FNO from: {fno_with_time_folders[-1]}")
+        print(f"Loading FNO ({data_mode}) from: {fno_with_time_folders[-1]}")
 
         models[data_mode] = model  # Store the loaded model in the models dictionary
 
