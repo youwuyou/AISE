@@ -1,7 +1,4 @@
-h5py==3.12.1
 matplotlib==3.10.0
-neuraloperator==0.3.0
-scikit-learn==1.6.0
-torch-harmonics==0.7.3
-wandb==0.19.1
-zarr==2.18.3
+numpy==2.2.1
+scipy==1.15.0
+torch==2.5.1
