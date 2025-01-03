@@ -1,6 +1,6 @@
 # Project 1
 
-This folder contains work on neural operators[^1][^2][^3][^4][^5][^6].
+This folder contains work on neural operators[^1][^2][^3][^4]
 
 
 ## Getting Started
@@ -50,30 +50,26 @@ python3 train_fno_with_time.py --mode=onetoall
 
 ## References
 
-[^1]: **A Library for Learning Neural Operators**  
-    J. Kossaifi, Z. C. Lipton, A. Kolbeinsson, C. Shulman, Y. Panagakis, A. Anandkumar, A. Toisoul  
-    *arXiv preprint*  
-    [[paper]](https://arxiv.org/abs/2412.10354) 
-    [[code]](https://github.com/neuraloperator/neuraloperator)
+[^1]: **Neural Operator: Learning Maps Between Function Spaces**  
+    N. Kovachki, Z. Li, B. Liu, K. Azizzadenesheli, K. Bhattacharya, A. Stuart, A. Anandkumar  
+    *Journal of Machine Learning Research (JMLR), 23, 1-97*  
+    [[paper]](https://arxiv.org/abs/2108.08481)
 
-[^2]: **Poseidon: Efficient Foundation Models for PDEs**  
-    M. Herde et al.  
-    *arXiv preprint*  
-    [[paper]](https://arxiv.org/abs/2405.19101)
-    [[project]](https://github.com/camlab-ethz/poseidon)
+[^2]: **Fourier Neural Operator for Parametric Partial Differential Equations**  
+    Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar  
+    *International Conference on Learning Representations (ICLR)*  
+    [[paper]](https://arxiv.org/abs/2010.08895)
+    [[blog]](https://zongyi-li.github.io/blog/2020/fourier-pde/)
 
 [^3]: **Representation Equivalent Neural Operators: a Framework for Alias-free Operator Learning**  
     F. Bartolucci, E. de Bézenac, B. Raonić, R. Molinaro, S. Mishra, R. Alaifari  
     *Advances in Neural Information Processing Systems (NeurIPS), 36*  
     [[paper]](https://arxiv.org/abs/2305.19913)
 
-[^4]: **Neural Operator: Learning Maps Between Function Spaces**  
-    N. Kovachki, Z. Li, B. Liu, K. Azizzadenesheli, K. Bhattacharya, A. Stuart, A. Anandkumar  
-    *Journal of Machine Learning Research (JMLR), 23, 1-97*  
-    [[paper]](https://arxiv.org/abs/2108.08481)
+[^4]: **Poseidon: Efficient Foundation Models for PDEs**  
+    M. Herde et al.  
+    *arXiv preprint*  
+    [[paper]](https://arxiv.org/abs/2405.19101)
+    [[project]](https://github.com/camlab-ethz/poseidon)
 
-[^5]: **Fourier Neural Operator for Parametric Partial Differential Equations**  
-    Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar  
-    *International Conference on Learning Representations (ICLR)*  
-    [[paper]](https://arxiv.org/abs/2010.08895)
-    [[blog]](https://zongyi-li.github.io/blog/2020/fourier-pde/)
+
