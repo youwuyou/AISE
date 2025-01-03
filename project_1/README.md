@@ -4,7 +4,7 @@ This folder contains implementation of the Fourier Neural Operator (FNO) [^1][^2
 
 Under `checkpoints/onetoall` and `checkpoints/all2all`, two time-dependent models are provided. Both of them are capable of predicting solution trajectories of the wave IBVP across time.
 
-For more details, please see the [📄 project 1 report](pdf/report.pdf), where we also discussed about the theoretical aspects of the FNO, such as its weaknesses for resolving problems on coraser grid, reflecting the fact that FNO is not ReNO (representation equivalent neural operator) [^3].
+For more details, please see the [📄 project 1 report](report.pdf), where we also discussed about the theoretical aspects of the FNO, such as its weaknesses for resolving problems on coraser grid, reflecting the fact that FNO is not ReNO (representation equivalent neural operator) [^3].
 
 ![IBVP Solution Heatmap](results/time/ibvp_sol_heatmap.png)
 *Spatio-temporal solution for the Initial Boundary Value Problem (IBVP) of 1D homogeneous wave equation*
