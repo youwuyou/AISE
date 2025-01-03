@@ -6,11 +6,15 @@ Training time-dependent FNO
 """
 
 import json
+import argparse
+from pathlib import Path
+
 import torch
 import numpy as np
-from pathlib import Path
 from torch.utils.data import DataLoader, Dataset, Subset
 
+from fno import FNO1d
+from dataset import All2All
 
 from utils import (
    train_model,
@@ -18,8 +22,6 @@ from utils import (
    save_config,
 )
 from visualization import plot_training_history
-from fno import FNO1d
-from dataset import All2All
 
 
 def main(data_mode="all2all"):
@@ -101,5 +103,8 @@ def main(data_mode="all2all"):
     print(f"Best validation loss: {training_history['best_val_loss']:.6f} at epoch {training_history['best_epoch']}")
 
 if __name__ == "__main__":
-    main("all2all")
-    # main("onetoall")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type=str, choices=['all2all', 'onetoall'], default='all2all')
+    args = parser.parse_args()
+    
+    main(args.mode)
