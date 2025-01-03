@@ -13,7 +13,6 @@ from visualization import (
     plot_l2_error_by_resolution,
     plot_error_distributions,
     plot_ibvp_sol_heatmap,
-    plot_trajectory_at_time,
     plot_model_errors_temporal
 )
 from utils import (

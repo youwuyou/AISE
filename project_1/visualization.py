@@ -329,45 +329,6 @@ from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 from matplotlib.collections import LineCollection
 from scipy.interpolate import RegularGridInterpolator
 
-def plot_trajectory_at_time(predictions, data, test_idx=0, res_dir=None, figsize=(15, 10), filename="predictions_over_time.png"):
-    """
-    Modified to work with the new all2all prediction format.
-    
-    Args:
-        predictions: Predictions array from all2all evaluation
-        data: Tuple of (u0, uT) where u0 is initial state and uT is final state
-        test_idx: Index of the test sample to visualize
-        res_dir: Directory to save the plots
-        figsize: Figure size tuple
-        filename: Name of the file to save the figure
-    """
-    res_dir = Path(res_dir) if res_dir else Path('.')
-    res_dir.mkdir(parents=True, exist_ok=True)
-
-    # For all2all, we'll plot initial and final states
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)
-    
-    # Unpack data tuple
-    u0, uT = data
-    x = np.linspace(0, 1, u0.shape[-1])
-    
-    # Plot initial state
-    ax1.plot(x, u0[test_idx], 'b-', label='Initial State', linewidth=2)
-    ax1.set_title('t = 0.0')
-    ax1.grid(True)
-    ax1.legend()
-    
-    # Plot final state comparison
-    ax2.plot(x, uT[test_idx], 'b-', label='True Solution', linewidth=2)
-    ax2.plot(x, predictions[test_idx], 'r--', label='Prediction', linewidth=2)
-    ax2.set_title('t = 1.0')
-    ax2.grid(True)
-    ax2.legend()
-
-    plt.tight_layout()
-    save_path = res_dir / filename
-    plt.savefig(save_path, bbox_inches='tight', dpi=300)
-    plt.close()
 
 def plot_ibvp_sol_heatmap(data_path, model, predictions_dict, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
     """

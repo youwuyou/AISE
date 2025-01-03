@@ -16,7 +16,7 @@ Testing datasets
 import torch
 import numpy as np
 
-from torch.utils.data import Dataset, DataLoader, TensorDataset
+from torch.utils.data import Dataset, DataLoader
 
 class OneToOne(Dataset):
     def __init__(self, 
