@@ -38,8 +38,10 @@ class OneToOne(Dataset):
             self.data = dataset[:training_samples]
         elif which == "validation":
             self.data = dataset[training_samples:]
+        elif which == "testing":
+            self.data = dataset
         else:
-            raise ValueError("Dataset must be initialized with 'training' or 'validation'")
+            raise ValueError("Dataset must be 'training', 'validation' or `testing`")
             
         self.length = len(self.data)
         self.dt = dt
@@ -112,8 +114,10 @@ class All2All(Dataset):
             self.data = dataset[:training_samples]
         elif which == "validation":
             self.data = dataset[training_samples:]
+        elif which == "testing":
+            self.data = dataset
         else:
-            raise ValueError("Dataset must be 'training' or 'validation'")
+            raise ValueError("Dataset must be 'training', 'validation' or `testing`")
             
         self.length = len(self.data)
         self.dt = dt
@@ -209,15 +213,14 @@ def main():
     # Initializing dataset loading for One-to-One strategy
     batch_size   = 5
     training_set = DataLoader(OneToOne("training"), batch_size=batch_size, shuffle=True)
-    testing_set  = DataLoader(OneToOne("validation"), batch_size=batch_size, shuffle=False)
+    validation_set  = DataLoader(OneToOne("validation"), batch_size=batch_size, shuffle=False)
 
     # Initializing all2all loading for all2all strategy
     training_set = DataLoader(All2All("training"), batch_size=batch_size, shuffle=True)
-    testing_set = DataLoader(All2All("validation"), batch_size=batch_size, shuffle=False)
+    validation_set = DataLoader(All2All("validation"), batch_size=batch_size, shuffle=False)
 
-    # Using custom time pairs
-    training_set = DataLoader(All2All("training", time_pairs = [(0, 4)]), batch_size=batch_size, shuffle=True)
-    testing_set = DataLoader(All2All("validation", time_pairs = [(0, 4)]), batch_size=batch_size, shuffle=False)
+    # Using custom time pairs chosen for test data
+    testing_set = DataLoader(All2All("testing", training_samples=0, time_pairs = [(0, 4)]), batch_size=batch_size, shuffle=False)
 
 if __name__ == "__main__":
    main()
