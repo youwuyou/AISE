@@ -14,9 +14,19 @@ source venv/bin/activate  # Linux/Mac
 
 2. Install Git LFS (for fetching trained models under `project_X/checkpoints`):
 
+If you are working on your local machine, the git LFS for large file storage can be installed and used by:
+
 ```bash
 pip install git-lfs
 git lfs install
+git lfs pull
+```
+
+otherwise you could install git-lfs via some package manager on the cluster like spack with:
+
+```bash
+spack install git-lfs
+spack load git-lfs # then you can load the module and proceed with pulling LFS files
 ```
 
 3. Install dependencies:
