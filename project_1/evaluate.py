@@ -31,7 +31,7 @@ def evaluate_direct(model,
                   strategy="onetoone",
                   time_pairs=None,
                   device=None):
-    """Evaluate the performance of a given model on a validation dataset."""
+    """Evaluate the performance of a given model on a testing dataset."""
     
     if device is None:
         device = next(model.parameters()).device
@@ -39,11 +39,11 @@ def evaluate_direct(model,
     model.eval()
 
     if strategy == "onetoone":
-        strategy = OneToOne("validation", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
+        strategy = OneToOne("testing", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
     elif strategy == "all2all" and not time_pairs:
-        strategy = All2All("validation", data_path=data_path, device=device, dt=dt)
+        strategy = All2All("testing", data_path=data_path, device=device, dt=dt)
     elif strategy == "all2all" and time_pairs:
-        strategy = All2All("validation", data_path=data_path, time_pairs =time_pairs, device=device)
+        strategy = All2All("testing", data_path=data_path, time_pairs =time_pairs, device=device)
     else:
         raise ValueError("Invalid strategy. Please choose either 'onetoone' or 'all2all'.")
 
@@ -115,7 +115,7 @@ def task2_evaluation(model, res_dir):
     resolution_data = {}
     for res in resolutions:
         dataset = OneToOne(
-            which="validation", 
+            which="testing", 
             data_path=f"data/test_sol_res_{res}.npy",
             start_idx=0,
             end_idx=1
