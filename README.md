@@ -12,7 +12,14 @@ source venv/bin/activate  # Linux/Mac
 .\venv\Scripts\activate  # Windows
 ```
 
-2. Install dependencies:
+2. Install Git LFS (for fetching trained models under `project_X/checkpoints`):
+
+```bash
+pip install git-lfs
+git lfs install
+```
+
+3. Install dependencies:
 
 ```bash
 pip install -r requirements.txt
