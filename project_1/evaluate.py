@@ -17,77 +17,11 @@ from visualization import (
 )
 from utils import (
 load_model,
-print_bold
+print_bold,
+evaluate_direct
 )
-from torch.utils.data import DataLoader
-from dataset import OneToOne, All2All
+from dataset import OneToOne
 
-def evaluate_direct(model, 
-                  data_path: str,
-                  batch_size=5, 
-                  start_idx=0, 
-                  end_idx=4,
-                  dt=0.25,
-                  strategy="onetoone",
-                  time_pairs=None,
-                  device=None):
-    """Evaluate the performance of a given model on a testing dataset."""
-    
-    if device is None:
-        device = next(model.parameters()).device
-        
-    model.eval()
-
-    if strategy == "onetoone":
-        strategy = OneToOne("testing", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
-    elif strategy == "all2all" and not time_pairs:
-        strategy = All2All("testing", data_path=data_path, device=device, dt=dt)
-    elif strategy == "all2all" and time_pairs:
-        strategy = All2All("testing", data_path=data_path, time_pairs =time_pairs, device=device)
-    else:
-        raise ValueError("Invalid strategy. Please choose either 'onetoone' or 'all2all'.")
-
-    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
-    
-    all_predictions = []
-    all_errors = torch.tensor([], device=device)
-    u0, uT = [], []
-    
-    with torch.no_grad():
-        for batch_input, batch_target in test_loader:
-            batch_input = batch_input.to(device)
-            batch_target = batch_target.to(device)
-            
-            predictions = model(batch_input)
-            predictions = predictions.squeeze(-1)
-            targets = batch_target.squeeze(-1)
-            
-            u0.append(batch_input[:, 0].cpu())
-            uT.append(targets.cpu())
-            
-            # Relative L2 norm
-            individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
-
-            # Record current prediction and error
-            all_predictions.append(predictions.cpu())
-            all_errors = torch.cat([all_errors, individual_abs_errors])
-
-        # Concatenate all predictions in order
-        predictions = torch.cat(all_predictions, dim=0)
-
-        # Calculate average relative L2 error
-        average_error = all_errors.mean().item() * 100  # (in %)
-        
-        results = {
-            'predictions': predictions,
-            'error': average_error,
-            'individual_errors': (all_errors * 100).cpu().tolist()  # (in %)
-        }
-    
-    u0 = torch.cat(u0, dim=0)
-    uT = torch.cat(uT, dim=0)
-    
-    return results, (u0, uT)
 
 def task1_evaluation(model, res_dir):
     print_bold("Task 1: Evaluating FNO model from One-to-One training on standard test set...")    

@@ -1,5 +1,5 @@
 """
-Utility functions used for training the FNO models used for our custom FNO implementation
+Utility functions used for training and evaluating the FNO models
 """
 
 import torch
@@ -8,6 +8,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 from fno import FNO1d
+from torch.utils.data import DataLoader
+from dataset import OneToOne, All2All
 
 def print_bold(text: str) -> None:
     """Print a bold header text."""
@@ -135,3 +137,142 @@ def train_model(model, training_set, testing_set, config, checkpoint_dir):
             print(f"Epoch: {epoch}, Train Loss: {train_mse:.6f}, Validation Loss: {val_loss:.6f}")
     
     return model, training_history
+
+def evaluate_direct(model, 
+                  data_path: str,
+                  batch_size=5, 
+                  start_idx=0, 
+                  end_idx=4,
+                  dt=0.25,
+                  strategy="onetoone",
+                  time_pairs=None,
+                  device=None):
+    """Using direct inference to evaluate the performance of a given model on a testing dataset."""
+    
+    if device is None:
+        device = next(model.parameters()).device
+        
+    model.eval()
+
+    if strategy == "onetoone":
+        strategy = OneToOne("testing", data_path=data_path, start_idx=start_idx, end_idx=end_idx, device=device)
+    elif strategy == "all2all" and not time_pairs:
+        strategy = All2All("testing", data_path=data_path, device=device, dt=dt)
+    elif strategy == "all2all" and time_pairs:
+        strategy = All2All("testing", data_path=data_path, time_pairs =time_pairs, device=device)
+    else:
+        raise ValueError("Invalid strategy. Please choose either 'onetoone' or 'all2all'.")
+
+    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
+    
+    all_predictions = []
+    all_errors = torch.tensor([], device=device)
+    u0, uT = [], []
+    
+    with torch.no_grad():
+        for batch_input, batch_target in test_loader:
+            batch_input = batch_input.to(device)
+            batch_target = batch_target.to(device)
+            
+            predictions = model(batch_input)
+            predictions = predictions.squeeze(-1)
+            targets = batch_target.squeeze(-1)
+            
+            u0.append(batch_input[:, 0].cpu())
+            uT.append(targets.cpu())
+            
+            # Relative L2 norm
+            individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
+
+            # Record current prediction and error
+            all_predictions.append(predictions.cpu())
+            all_errors = torch.cat([all_errors, individual_abs_errors])
+
+        # Concatenate all predictions in order
+        predictions = torch.cat(all_predictions, dim=0)
+
+        # Calculate average relative L2 error
+        average_error = all_errors.mean().item() * 100  # (in %)
+        
+        results = {
+            'predictions': predictions,
+            'error': average_error,
+            'individual_errors': (all_errors * 100).cpu().tolist()  # (in %)
+        }
+    
+    u0 = torch.cat(u0, dim=0)
+    uT = torch.cat(uT, dim=0)
+    
+    return results, (u0, uT)
+
+def evaluate_autoregressive(model, 
+                            data_path, 
+                            timesteps, 
+                            batch_size=5,
+                            base_dt = 0.25,
+                            start_idx = 0,
+                            end_idx = 4,
+                            device="cuda"):
+    """Using autoregressive inference to evaluate the performance of a given model on a testing dataset."""
+    model.eval()
+    strategy = All2All("testing", 
+                       data_path=data_path,
+                       time_pairs=[(start_idx, end_idx)],
+                       dt=base_dt,
+                       device=device)
+
+    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
+    
+    all_predictions = []
+    all_errors = torch.tensor([], device=device)
+    u0, uT = [], []
+    
+    with torch.no_grad():
+        for batch_input, batch_target in test_loader:
+            batch_input = batch_input.to(device)
+            batch_target = batch_target.to(device)
+            
+            u_start = batch_input[..., 0]
+            v_start = batch_input[..., 1]  # This is already central-differenced from All2All
+            x_grid = batch_input[..., 2]
+            
+            u_current = u_start
+            v_current = v_start
+            
+            for step_size in timesteps:
+                dt = torch.full_like(u_start, base_dt * step_size, device=device)
+                
+                current_input = torch.stack(
+                    (u_current, v_current, x_grid, dt), dim=-1
+                )
+                
+                u_next = model(current_input).squeeze(-1)
+                # Forward difference for velocity (matching All2All's treatment of initial velocity)
+                v_next = (u_next - u_current) / dt
+                u_current = u_next
+                v_current = v_next
+            
+            predictions = u_current
+            targets = batch_target.squeeze(-1)
+            
+            u0.append(batch_input[..., 0].cpu())
+            uT.append(targets.cpu())
+            
+            individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
+            
+            all_predictions.append(predictions.cpu())
+            all_errors = torch.cat([all_errors, individual_abs_errors])
+
+    predictions = torch.cat(all_predictions, dim=0)
+    average_error = all_errors.mean().item() * 100
+    
+    results = {
+        'predictions': predictions,
+        'error': average_error,
+        'individual_errors': (all_errors * 100).cpu().tolist()
+    }
+    
+    u0 = torch.cat(u0, dim=0)
+    uT = torch.cat(uT, dim=0)
+    
+    return results, (u0, uT)

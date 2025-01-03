@@ -21,87 +21,10 @@ from visualization import (
 
 from utils import (
 load_model,
-print_bold
+print_bold,
+evaluate_direct,
+evaluate_autoregressive
 )
-from torch.utils.data import DataLoader
-
-from typing import Dict, List
-from enum import Enum, auto
-from dataset import All2All
-
-# FIXME: move it else-where
-from evaluate import evaluate_direct
-
-def evaluate_autoregressive(model, 
-                            data_path, 
-                            timesteps, 
-                            batch_size=5, 
-                            base_dt = 0.25,
-                            start_idx = 0,
-                            end_idx = 4,
-                            device="cuda"):
-    model.eval()
-    strategy = All2All("testing", 
-                       data_path=data_path,
-                       time_pairs=[(start_idx, end_idx)],
-                       dt=base_dt,
-                       device=device)
-
-    test_loader = DataLoader(strategy, batch_size=batch_size, shuffle=False)
-    
-    all_predictions = []
-    all_errors = torch.tensor([], device=device)
-    u0, uT = [], []
-    
-    with torch.no_grad():
-        for batch_input, batch_target in test_loader:
-            batch_input = batch_input.to(device)
-            batch_target = batch_target.to(device)
-            
-            u_start = batch_input[..., 0]
-            v_start = batch_input[..., 1]  # This is already central-differenced from All2All
-            x_grid = batch_input[..., 2]
-            
-            u_current = u_start
-            v_current = v_start
-            
-            for step_size in timesteps:
-                dt = torch.full_like(u_start, base_dt * step_size, device=device)
-                
-                current_input = torch.stack(
-                    (u_current, v_current, x_grid, dt), dim=-1
-                )
-                
-                u_next = model(current_input).squeeze(-1)
-                # Forward difference for velocity (matching All2All's treatment of initial velocity)
-                v_next = (u_next - u_current) / dt
-                u_current = u_next
-                v_current = v_next
-            
-            predictions = u_current
-            targets = batch_target.squeeze(-1)
-            
-            u0.append(batch_input[..., 0].cpu())
-            uT.append(targets.cpu())
-            
-            individual_abs_errors = torch.norm(predictions - targets, p=2, dim=1) / torch.norm(targets, p=2, dim=1)
-            
-            all_predictions.append(predictions.cpu())
-            all_errors = torch.cat([all_errors, individual_abs_errors])
-
-    predictions = torch.cat(all_predictions, dim=0)
-    average_error = all_errors.mean().item() * 100
-    
-    results = {
-        'predictions': predictions,
-        'error': average_error,
-        'individual_errors': (all_errors * 100).cpu().tolist()
-    }
-    
-    u0 = torch.cat(u0, dim=0)
-    uT = torch.cat(uT, dim=0)
-    
-    return results, (u0, uT)
 
 
 def task4_evaluation(model, res_dir):
