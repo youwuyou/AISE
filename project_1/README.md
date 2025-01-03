@@ -1,52 +1,79 @@
-## 📚 References
+# Project 1
 
-<div align="justify">
+This folder contains work on neural operators[^1][^2][^3][^4][^5][^6].
 
-<details open>
-<summary><strong>2024</strong></summary>
 
-* **A Library for Learning Neural Operators**<br>
-  J. Kossaifi, Z. C. Lipton, A. Kolbeinsson, C. Shulman, Y. Panagakis, A. Anandkumar, A. Toisoul<br>
-  *arXiv preprint*<br>
-  [[paper]](https://arxiv.org/abs/2412.10354) 
-  [[code]](https://github.com/neuraloperator/neuraloperator)
+## Getting Started
 
-* **Poseidon: Efficient Foundation Models for PDEs**<br>
-  M. Herde et al.<br>
-  *arXiv preprint*<br>
-  [[paper]](https://arxiv.org/abs/2405.19101)
-  [[project]](https://github.com/camlab-ethz/poseidon)
+### Evaluation
 
-</details>
+For the evaluation of task 1 - 3, we consider a model that is independent of time. It is trained by setting `time_dependent = False` and resides under the `checkpoints/onetoone` folder.
 
-<details open>
-<summary><strong>2023</strong></summary>
+For the evaluation of task 4 & bonus, we provide two time-dependent FNO models that used All2All and One-to-All (Vanilla) data loading strategies respectively. The models are stored under `checkpoints/all2all` and `checkpoints/onetoone` respectively, under each subfolder for the model one can also see the training history, as well as the model & training parameters specified.
 
-* **Representation Equivalent Neural Operators: a Framework for Alias-free Operator Learning**<br>
-  F. Bartolucci, E. de Bézenac, B. Raonić, R. Molinaro, S. Mishra, R. Alaifari<br>
-  *Advances in Neural Information Processing Systems (NeurIPS), 36*<br>
-  [[paper]](https://arxiv.org/abs/2305.19913)
-</details>
+When running the following script, the evaluation for all task 1-4 & bonus will be proceeded, as long as the checkpoints contain corresponding pre-trained models.
 
-<details open>
-<summary><strong>2021</strong></summary>
+```bash
+python3 evaluate.py
+```
 
-* **Neural Operator: Learning Maps Between Function Spaces**<br>
-  N. Kovachki, Z. Li, B. Liu, K. Azizzadenesheli, K. Bhattacharya, A. Stuart, A. Anandkumar<br>
-  *Journal of Machine Learning Research (JMLR), 23, 1-97*<br>
-  [[paper]](https://arxiv.org/abs/2108.08481)
+Visualization will be stored under `results` and in particular for time-dependent evaluation under `results/time`
 
-</details>
+### Training
 
-<details open>
-<summary><strong>2020</strong></summary>
+We have already provided trained models that can be directly used for evaluating all tasks, however, if you wished to try out different model & training configurations, you could use the following scripts for training. We seperate the training scripts for plain (without time) and time-dependent training here.
 
-* **Fourier Neural Operator for Parametric Partial Differential Equations**<br>
-  Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar<br>
-  *International Conference on Learning Representations (ICLR)*<br>
-  [[paper]](https://arxiv.org/abs/2010.08895)
-  [[blog]](https://zongyi-li.github.io/blog/2020/fourier-pde/)
 
-</details>
+**Plain Training without Time**
 
-</div>
+For training the FNO model that can be used for evaluating task 1-3, run the following script if you wish to test out different parameters.
+
+```bash
+python3 train_fno.py
+```
+
+**Time-dependent Training**
+
+By default, All2All strategy is used if no flags are passed.
+
+```bash
+# Using O(k²) samples per trajectory
+python3 train_fno_with_time.py --mode=all2all
+```
+
+```bash
+# Using O(k) samples per trajectory
+# (0,1), (0,2), ..., (0, k) time pairs are used
+python3 train_fno_with_time.py --mode=onetoall
+```
+
+
+## References
+
+[^1]: **A Library for Learning Neural Operators**  
+    J. Kossaifi, Z. C. Lipton, A. Kolbeinsson, C. Shulman, Y. Panagakis, A. Anandkumar, A. Toisoul  
+    *arXiv preprint*  
+    [[paper]](https://arxiv.org/abs/2412.10354) 
+    [[code]](https://github.com/neuraloperator/neuraloperator)
+
+[^2]: **Poseidon: Efficient Foundation Models for PDEs**  
+    M. Herde et al.  
+    *arXiv preprint*  
+    [[paper]](https://arxiv.org/abs/2405.19101)
+    [[project]](https://github.com/camlab-ethz/poseidon)
+
+[^3]: **Representation Equivalent Neural Operators: a Framework for Alias-free Operator Learning**  
+    F. Bartolucci, E. de Bézenac, B. Raonić, R. Molinaro, S. Mishra, R. Alaifari  
+    *Advances in Neural Information Processing Systems (NeurIPS), 36*  
+    [[paper]](https://arxiv.org/abs/2305.19913)
+
+[^4]: **Neural Operator: Learning Maps Between Function Spaces**  
+    N. Kovachki, Z. Li, B. Liu, K. Azizzadenesheli, K. Bhattacharya, A. Stuart, A. Anandkumar  
+    *Journal of Machine Learning Research (JMLR), 23, 1-97*  
+    [[paper]](https://arxiv.org/abs/2108.08481)
+
+[^5]: **Fourier Neural Operator for Parametric Partial Differential Equations**  
+    Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar  
+    *International Conference on Learning Representations (ICLR)*  
+    [[paper]](https://arxiv.org/abs/2010.08895)
+    [[blog]](https://zongyi-li.github.io/blog/2020/fourier-pde/)
