@@ -155,7 +155,6 @@ class FNO1d(nn.Module):
         
         # Time-conditional normalization (only if time_dependent)
         if time_dependent:
-            print(f"Time dependent is set to {time_dependent}")
             self.film_list = nn.ModuleList([
                 FILM(self.width, use_bn=True) for _ in range(self.depth)
             ])
