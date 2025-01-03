@@ -11,7 +11,7 @@ from pathlib import Path
 
 import torch
 import numpy as np
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader
 
 from fno import FNO1d
 from dataset import All2All
