@@ -1,7 +1,13 @@
-# Project 1
+# Project 1: Fourier Neural Operator (FNO)
 
-This folder contains work on neural operators[^1][^2][^3][^4]
+This folder contains implementation of the Fourier Neural Operator (FNO) [^1][^2]. We provide an example usage of training and evaluating our FNO for resolving the IBVP of 1D wave equation. The simplest model under `checkpoints/onetoall` is independent of time, but demonstrates good abilities to do superresolution and shows relatively small errors on both in-distribution and out-of-distribution (OOD) dataset.
 
+Under `checkpoints/onetoall` and `checkpoints/all2all`, two time-dependent models are provided. Both of them are capable of predicting solution trajectories of the wave IBVP across time.
+
+For more details, please see the [📄 project 1 report](pdf/report.pdf), where we also discussed about the theoretical aspects of the FNO, such as its weaknesses for resolving problems on coraser grid, reflecting the fact that FNO is not ReNO (representation equivalent neural operator) [^3].
+
+![IBVP Solution Heatmap](results/time/ibvp_sol_heatmap.png)
+*Spatio-temporal solution for the Initial Boundary Value Problem (IBVP) of 1D homogeneous wave equation*
 
 ## Getting Started
 
@@ -47,8 +53,6 @@ python3 train_fno_with_time.py --mode=all2all
 python3 train_fno_with_time.py --mode=onetoall
 ```
 
-
-## References
 
 [^1]: **Neural Operator: Learning Maps Between Function Spaces**  
     N. Kovachki, Z. Li, B. Liu, K. Azizzadenesheli, K. Bhattacharya, A. Stuart, A. Anandkumar  

@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 ## Repository Structure
 
-The repository consists of three main projects, we try to resolve all projects using both AI-based and traditional numerical approaches:
+The repository consists of three main projects:
 
 1. Training FNO to Solve the 1D Wave Equation
 2. PDE-Find: Reconstructing PDEs from Data
@@ -38,7 +38,7 @@ The repository consists of three main projects, we try to resolve all projects u
 | Task  | ML-based Implementation | Numerical Solver Implementation | Documentation |
 |-------------------------------|-------------------|------------------|---------------|
 | 1. 1D Wave Equation (FNO) | ✅  | N/A   | ✅  |
-| Bonus 1: All2all Training     | ✅    | N/A | ⏳  |
+| Bonus 1: All2all Training     | ✅    | N/A | ✅  |
 | 2. PDE-Find   | ⏳ Not Started    | ⏳ Not Started   | ⏳ |
 | 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  |
 | Bonus 2: Stability Analysis    | ⏳ Not Started    | N/A    | ⏳            |
