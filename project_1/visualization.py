@@ -208,7 +208,7 @@ def plot_l2_error_by_resolution(results: Dict[str, Dict[str, List[float]]],
     ax.set_xlabel('No. Nodal Points', fontsize=12, labelpad=10)
     ax.set_ylabel('Average Relative L2 Error (%)', fontsize=12, labelpad=10)
     ax.set_title(title if title else 'Test Error Across Resolutions', 
-                 fontsize=14, 
+                 fontsize=14,
                  pad=20,
                  weight='bold')
     
@@ -329,98 +329,6 @@ from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 from matplotlib.collections import LineCollection
 from scipy.interpolate import RegularGridInterpolator
 
-def plot_l2_error_by_timestep(results: Dict[str, Union[float, Dict[float, float]]], 
-                             t_i: List[float],
-                             save_dir: Path,
-                             title: Optional[str] = None) -> None:
-    """
-    Modified to work with both single error values and error curves.
-    
-    Args:
-        results: Dictionary with model names and their error values/curves
-        t_i: List of timesteps
-        save_dir: Directory to save the plot
-        title: Optional title for the plot
-    """
-    save_dir = Path(save_dir)
-    save_dir.mkdir(exist_ok=True)
-    
-    fig, ax = plt.subplots(figsize=(12, 7))
-    
-    # Colors for different models
-    colors = {
-        'Direct': 'red',
-        'AR': 'dodgerblue'
-    }
-    
-    ax.grid(True, linestyle='--', alpha=0.2, which='both')
-    ax.set_axisbelow(True)
-    
-    max_error = 0
-    
-    for model_name, errors in results.items():
-        if model_name == 'error':
-            continue  # Skip the final error entry
-            
-        if isinstance(errors, dict):
-            # Plot error curve
-            error_values = [errors[t] for t in t_i]
-            max_error = max(max_error, max(error_values))
-            
-            # Plot line
-            ax.plot(t_i, error_values,
-                   '-',
-                   label=model_name,
-                   color=colors.get(model_name, 'dodgerblue'),
-                   linewidth=2.5,
-                   zorder=3)
-            
-            # Add markers
-            ax.plot(t_i, error_values,
-                   'o',
-                   color=colors.get(model_name, 'dodgerblue'),
-                   markersize=10,
-                   markeredgewidth=2,
-                   markeredgecolor='white',
-                   zorder=4)
-            
-            # Add error value annotations
-            bbox_props = dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8)
-            for t, err in zip(t_i, error_values):
-                ax.annotate(f"{err:.2f}%", 
-                          (t, err),
-                          textcoords="offset points",
-                          xytext=(0, 10),
-                          ha='center',
-                          bbox=bbox_props,
-                          zorder=6)
-    
-    ax.set_xlabel('Time', fontsize=12, labelpad=10)
-    ax.set_ylabel('Average Relative L2 Error (%)', fontsize=12, labelpad=10)
-    ax.set_title(title if title else 'Test Error', 
-                 fontsize=14, 
-                 pad=20,
-                 weight='bold')
-    
-    ax.set_xticks(t_i)
-    ax.set_xticklabels([f'{t:.2f}' for t in t_i], fontsize=10)
-    
-    # Add some padding to y-axis
-    ax.set_ylim(0, max_error * 1.2)
-    
-    legend = ax.legend(loc='upper right',
-                      frameon=True,
-                      framealpha=0.95,
-                      edgecolor='gray',
-                      fancybox=True,
-                      fontsize=10)
-    legend.get_frame().set_linewidth(0.5)
-    
-    plt.savefig(save_dir / 'l2_error_all2all.png', 
-                bbox_inches='tight', 
-                dpi=300)
-    plt.close()
-
 def plot_trajectory_at_time(predictions, data, test_idx=0, res_dir=None, figsize=(15, 10), filename="predictions_over_time.png"):
     """
     Modified to work with the new all2all prediction format.
@@ -461,26 +369,20 @@ def plot_trajectory_at_time(predictions, data, test_idx=0, res_dir=None, figsize
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
     plt.close()
 
-def plot_ibvp_sol_heatmap(data_path, model, predictions, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
+def plot_ibvp_sol_heatmap(data_path, model, predictions_dict, trajectory_indices, res_dir, figsize=(24, 5), n_interp_points=200):
     """
-    Modified to work with the new all2all prediction format and linear interpolation.
-    Calculates errors at original data points before interpolation.
+    Plot heatmap visualization for wave equation IBVP solutions.
+    Handles spatio-temporal interpolation with proper boundary conditions.
     """
     res_dir = Path(res_dir)
     res_dir.mkdir(parents=True, exist_ok=True)
 
     # Load data
     data = np.load(data_path)
-    
-    # Create predictions dictionary for compatibility
-    predictions_dict = {
-        0.0: data[:, 0],  # Initial condition
-        1.0: predictions   # Final predictions
-    }
 
     # Original and interpolation grids
     x_orig = np.linspace(0, 1, data.shape[2])
-    t_orig = np.array([0.0, 1.0])  # Only initial and final times
+    t_orig = np.linspace(0, 1, data.shape[1])  # Use all available timesteps
     x_fine = np.linspace(0, 1, n_interp_points)
     t_fine = np.linspace(0, 1, n_interp_points)
     
@@ -500,16 +402,36 @@ def plot_ibvp_sol_heatmap(data_path, model, predictions, trajectory_indices, res
 
     # First pass to calculate errors and get max error
     for traj_idx in trajectory_indices:
-        # Calculate error at original points
-        exact_values = np.stack([data[traj_idx, 0], data[traj_idx, -1]])  # Initial and final states
-        pred_values = np.stack([predictions_dict[0.0][traj_idx], predictions_dict[1.0][traj_idx]])
+        # Get full temporal evolution for exact solution
+        exact_values = data[traj_idx]  # Shape: (time_steps, 64)
         
-        # Calculate error at original points
-        original_error = np.abs(exact_values - pred_values)
+        # Get all available predictions (initial to final)
+        num_timesteps = 5  # t=0, 0.25, 0.5, 0.75, 1.0
+        pred_timepoints = np.linspace(0, 1, num_timesteps)
+        
+        # Collect predictions for this trajectory
+        pred_list = []
+        for t in range(num_timesteps):
+            if t == 0:
+                # Initial condition from data
+                pred = data[traj_idx, 0]
+            else:
+                # Get prediction for current timestep
+                pred = predictions_dict[t][traj_idx]
+                if torch.is_tensor(pred):
+                    pred = pred.detach().cpu().numpy()
+            pred_list.append(pred)
+        
+        # Stack all predictions
+        pred_full = np.stack(pred_list)  # Shape: (5, 64)
+        
+        # Calculate error using all timepoints
+        exact_timepoints = np.linspace(0, len(exact_values)-1, num_timesteps, dtype=int)
+        original_error = np.abs(exact_values[exact_timepoints] - pred_full)
         original_errors.append(original_error)
         max_error = max(max_error, original_error.max())
 
-        # Now interpolate both exact and predicted solutions
+        # Create interpolators
         interp_func_exact = RegularGridInterpolator(
             (t_orig, x_orig),
             exact_values,
@@ -517,15 +439,15 @@ def plot_ibvp_sol_heatmap(data_path, model, predictions, trajectory_indices, res
             bounds_error=False,
             fill_value=None
         )
-
+        
         interp_func_pred = RegularGridInterpolator(
-            (t_orig, x_orig),
-            pred_values,
+            (pred_timepoints, x_orig),
+            pred_full,
             method='linear',
             bounds_error=False,
             fill_value=None
         )
-
+        
         # Create fine grid points
         X_fine, T_fine = np.meshgrid(x_fine, t_fine)
         pts = np.array([T_fine.flatten(), X_fine.flatten()]).T
@@ -596,21 +518,12 @@ def plot_ibvp_sol_heatmap(data_path, model, predictions, trajectory_indices, res
         ax3.set_title('Predict u(x, t)')
         ax3.set_box_aspect(1)
 
-        # 4. Error plot using original error data
+        # 4. Error plot
         ax4 = fig.add_subplot(inner_grid[3])
-        # Interpolate the error data for visualization
-        error_interp = RegularGridInterpolator(
-            (t_orig, x_orig),
-            original_error,
-            method='linear',
-            bounds_error=False,
-            fill_value=None
-        )
-        Z_fine_error = error_interp(pts).reshape(n_interp_points, n_interp_points)
-        
-        im4 = ax4.pcolormesh(X_fine, T_fine, Z_fine_error,
+        Z_error = np.abs(Z_fine_exact - Z_fine_pred)
+        im4 = ax4.pcolormesh(X_fine, T_fine, Z_error,
                             shading='auto',
-                            cmap=cmap,
+                            cmap=plt.cm.Reds,
                             vmin=0,
                             vmax=max_error)
         plt.colorbar(im4, ax=ax4)
@@ -622,4 +535,87 @@ def plot_ibvp_sol_heatmap(data_path, model, predictions, trajectory_indices, res
     plt.tight_layout()
     save_path = res_dir / "ibvp_sol_heatmap.png"
     plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.close()
+
+def plot_model_errors_temporal(model_errors, save_path):
+    # Setup the figure with similar dimensions and spacing
+    fig = plt.figure(figsize=(12, 6))
+    gs = fig.add_gridspec(1, 1, wspace=0.3)
+    ax = fig.add_subplot(gs[0, 0])
+    
+    # Data
+    times = [0.25, 0.50, 0.75, 1.00]
+    onetoall_errors = model_errors[0]
+    all2all_errors = model_errors[1]
+    
+    # Use different shades of gray
+    dark_gray = '#404040'
+    light_gray = '#A0A0A0'
+    
+    # Calculate global limits for consistency
+    all_errors = onetoall_errors + all2all_errors
+    global_ylim = (0, max(all_errors) * 1.2)
+    
+    # Set width of bars and positions
+    width = 0.35
+    x = np.arange(len(times))
+    
+    # Create bars with different gray shades
+    bars1 = ax.bar(x - width/2, onetoall_errors, width, 
+                   label='One-to-All (Vanilla)', color=light_gray,
+                   alpha=0.9)
+    bars2 = ax.bar(x + width/2, all2all_errors, width, 
+                   label='All2All', color=dark_gray,
+                   alpha=0.9)
+    
+    # Add percentage labels
+    def autolabel(bars, color):
+        for bar in bars:
+            height = bar.get_height()
+            bbox_props = dict(
+                boxstyle='round,pad=0.5',
+                fc='white',
+                ec=color,
+                alpha=0.8
+            )
+            ax.text(bar.get_x() + bar.get_width() / 2, height + 0.5,
+                   f'{height:.2f}%',
+                   color=color,
+                   fontsize=12,
+                   fontweight='bold',
+                   bbox=bbox_props,
+                   horizontalalignment='center')
+    
+    autolabel(bars1, light_gray)
+    autolabel(bars2, dark_gray)
+    
+    # Add title
+    plt.figtext(0.5, 0.95, 'Error Comparison Across Time', 
+                fontsize=15, weight='bold', ha='center')
+    
+    # Axis labels
+    ax.set_ylabel('Average Relative L2 Error (%)', fontsize=11)
+    ax.set_xlabel('Time', fontsize=11)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f't={t}' for t in times])
+    
+    # Grid and spine styling
+    ax.grid(True, alpha=0.2)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Set y-axis limits
+    ax.set_ylim(global_ylim)
+    
+    # Legend
+    ax.legend(title='Models',
+             loc='upper left',
+             bbox_to_anchor=(0.02, 0.98))
+    
+    # Adjust layout
+    plt.subplots_adjust(right=0.9, top=0.85)
+    
+    # Save
+    plt.savefig(save_path / 'model_error_comparison.png', 
+                dpi=300, bbox_inches='tight')
     plt.close()
