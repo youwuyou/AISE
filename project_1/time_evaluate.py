@@ -15,7 +15,8 @@ from visualization import (
     plot_training_history,
     plot_ibvp_sol_heatmap,
     plot_trajectory_at_time,
-    plot_l2_error_by_timestep,
+    plot_error_distributions,
+    plot_model_errors_temporal
 )
 
 from utils import (
@@ -26,16 +27,23 @@ from torch.utils.data import DataLoader
 
 from typing import Dict, List
 from enum import Enum, auto
-from dataset import All2All, OneToOne
+from dataset import All2All
 
 # FIXME: move it else-where
 from evaluate import evaluate_direct
 
-def evaluate_autoregressive(model, data_path, timesteps, batch_size=5, base_dt = 0.25, device="cuda"):
+def evaluate_autoregressive(model, 
+                            data_path, 
+                            timesteps, 
+                            batch_size=5, 
+                            base_dt = 0.25,
+                            start_idx = 0,
+                            end_idx = 4,
+                            device="cuda"):
     model.eval()
-    strategy = All2All("validation", 
+    strategy = All2All("testing", 
                        data_path=data_path,
-                       time_pairs=[(0, 4)],
+                       time_pairs=[(start_idx, end_idx)],
                        dt=base_dt,
                        device=device)
 
@@ -99,7 +107,7 @@ def evaluate_autoregressive(model, data_path, timesteps, batch_size=5, base_dt =
 def task4_evaluation(model, res_dir):
     print_bold("1. Direct Evaluation")    
     result_a2a, data_a2a = evaluate_direct(model, "data/test_sol.npy", 
-                                        time_pairs=[(0, 4)], 
+                                        time_pairs=[(0, 4)],
                                         strategy="all2all")
     print(f"FNO Evaluation (t=1.0)  Error: {result_a2a['error']:.2f}%")
     
@@ -135,15 +143,20 @@ def task4_evaluation(model, res_dir):
         
     return result_a2a['predictions']
 
-
 def bonus_task_evaluation(model, res_dir):
     """
     Bonus Task evaluation using the new evaluate_direct with all2all strategy
     """
-    print_bold(f"Bonus Task: Evaluate All2All Training Across Time:")
     
-    print_bold("In-distribution Data Results:")
-    for end_idx in [1,2,3,4]:
+    # Load initial data for t=0
+    data = np.load("data/test_sol.npy")
+    all_predictions = {
+        0: data[:, 0]  # Initial condition from data
+    }
+    
+    print_bold("In-distribution Data Results Across Time:")
+    avg_errors_across_time = []
+    for end_idx in [1, 2, 3, 4]:
         print(f"End time: t = {end_idx * 0.25}")
         result, test_data = evaluate_direct(
             model,
@@ -151,60 +164,41 @@ def bonus_task_evaluation(model, res_dir):
             strategy="all2all",
             time_pairs=[(0, end_idx)]
         )
+        # Store predictions for each timestep
+        all_predictions[end_idx] = result['predictions']
+        error = result['error']
+        avg_errors_across_time.append(error)
 
-        # Print result for each end time in {0.25, 0.5, 0.75, 1.0}
+        print(f"shape of all_predictions[end_idx]: {all_predictions[end_idx].shape}")
+
         print(f"Average Relative L2 Error: {result['error']:.2f}%")
         print("-" * 50)
-
-    # OOD evaluation (t = 1.0)
-    ood_result, ood_data = evaluate_direct(
-        model,
-        data_path="data/test_sol_OOD.npy",
-        strategy="all2all",
-        time_pairs=[(0,1)]
-    )
     
-    print_bold("OOD Data Results:")
-    print(f"Resolution: {ood_data[0].shape}")
-    print(f"Average Relative L2 Error: {ood_result['error']:.2f}%")
-
-    # Visualizations
-    # plot_trajectory_at_time(
-    #     result['predictions'], 
-    #     test_data, 
-    #     res_dir=res_dir, 
-    #     filename="bonus_test_data.png"
-    # )
-    
-    # plot_trajectory_at_time(
-    #     ood_result['predictions'], 
-    #     ood_data, 
-    #     res_dir=res_dir, 
-    #     filename="bonus_ood_data.png"
-    # )
-
-    # Space-time heatmap for test data
-    print_bold("Visualize spatio-temporal evolution with heatmap")
-    result, test_data = evaluate_direct(
-        model,
-        data_path="data/test_sol.npy",
-        strategy="all2all"
-    )
-
     plot_ibvp_sol_heatmap(
         "data/test_sol.npy",
         model,
-        result['predictions'],
-        trajectory_indices=[0, 127],
+        all_predictions,
+        trajectory_indices=[0, 63, 127],  # choose between {0,...,127}
         res_dir=res_dir
     )
 
-    return result['predictions'], ood_result['predictions']
+    # Testing on OOD data
+    # use autoregressive eval with specifying to take 4 timesteps of size dt=0.25 (equiv to direct eval)
+    ood_result, ood_data = evaluate_autoregressive(model, 
+                                        "data/test_sol_OOD.npy",
+                                        end_idx=1,
+                                        timesteps=[4])
+    
+    print_bold("OOD Data Results at t = 1.0:")
+    print(f"Resolution: {ood_data[0].shape}, {ood_data[1].shape}")
+    print(f"Average Relative L2 Error: {ood_result['error']:.2f}%\n")
+
+    return avg_errors_across_time
 
 
 def main():
     res_dir = Path("results/time")
-    res_dir.mkdir(exist_ok=True)
+    res_dir.mkdir(parents=True, exist_ok=True)
 
     # Load time-dependent FNO models trained via one-to-all (vanilla) training
     print_bold("Task 4: Evaluation of Time-dependent Training at End Time (t = 1.0)")
@@ -217,20 +211,28 @@ def main():
 
         # Load model from checkpoint
         model = load_model(fno_with_time_folders[-1])
-        print_bold(f"Loading FNO ({data_mode}) from: {fno_with_time_folders[-1]}")
+        print_bold(f"Loading FNO ({data_mode}) from: {fno_with_time_folders[-1]}, plotting training history...")
 
-        models[data_mode] = model  # Store the loaded model in the models dictionary
-
-        print("Plotting training history...")
         plot_training_history(fno_with_time_folders[-1])
 
         # Run evaluate at t = 1.0 using both one-to-all and all2all model
         task4_results = task4_evaluation(model, res_dir)
 
-    # Using only all2all trained model here
-    bonus_results = bonus_task_evaluation(models['all2all'], res_dir)
-    bonus_results = bonus_task_evaluation(models['onetoall'], res_dir)
+        # Store the loaded model in the models dictionary
+        models[data_mode] = model
 
+    # Using only all2all trained model here
+    print_bold(f"Bonus Task: Evaluate All2All Training Across Time:")
+
+    model_errors = []
+    for data_mode in ['onetoall', 'all2all']:
+        print_bold(f"Using FNO ({data_mode})")
+        errors_across_time = bonus_task_evaluation(models[data_mode], res_dir)
+        print(f"all average errors: {errors_across_time}")
+        model_errors.append(errors_across_time)
+
+    # Plot model error across time
+    plot_model_errors_temporal(model_errors, res_dir)
     print(f"\nAll plots have been saved in the '{res_dir}' directory.")
 
 if __name__ == "__main__":
