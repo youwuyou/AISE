@@ -11,7 +11,7 @@ We trained simple neural networks to approximate spatiotemporal solutions of the
 python3 train.py --system=2
 ```
 
-Before we can use the trained NN to approximate our solution, we can compare it against the 
+Before we can use the trained NN to approximate our solution, we can compare it against the ground truth using the provided dataset:
 
 ```python
 # Test out the NN and compare it against the dataset ground truth
