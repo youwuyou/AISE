@@ -4,7 +4,7 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 ## Getting Started
 
-We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in {1,2,3}$) with
+We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2,3\}$ for $3$ different PDE systems) with
 
 ```python
 # Train NN to approximate u(x,t) of the system 2
