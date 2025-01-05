@@ -21,10 +21,17 @@ python3 test.py --system=2
 This file will generate the a heat map of the approximated solution, as well as a gif showing the spatial-temporal evolution of the system. As we can see our approximation is of good quality, we can be reassured to further use the NN to compute derivatives.
 
 
-| Approximate Solution Heatmap | Solution Comparison |
-| --- | --- |
-| ![Approximate Solution Heatmap](results/system_2/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_2/solution_comparison.gif) |
+| System | Approximate Solution Heatmap | Solution Comparison |
+| --- | --- | --- |
+| System 1 | ![Approximate Solution Heatmap](results/system_1/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_1/solution_comparison.gif) |
+| System 2 | ![Approximate Solution Heatmap](results/system_2/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_2/solution_comparison.gif) |
 
+
+### Selecting Candidates
+
+In order to be able to flexibly generate candidate derivatives and specify eligible binary operations to be performed, we use [SymPy](https://www.sympy.org/en/index.html) to generate the candidate symbols automatically.
+
+The symbols can be passed to different actual compute kernels that compute the specified derivatives. In our implementation, we provide these derivatives via automatic differentiation on the trained neural networks that approximate our solution data.
 
 ### Automatic Differentiation
 
@@ -37,8 +44,14 @@ python3 differentiation.py --system=2
 
 ### Building the Feature Library
 
+The feature library can now be built very easily because the results from automatic differentiation are already column vectors in our target shape. The only thing we need to do now is to assign these values column-wise to the $\Theta$ matrix.
+
+We provide concise utility functions `build_theta` and `build_u_t` for assembling the sparse LSE that can be directly used in the upcoming regression.
+
 
 ### Sparse Linear Regression for Solving the LSE
+
+TODO:
 
 
 [^1]: **Data-driven discovery of partial differential equations**
