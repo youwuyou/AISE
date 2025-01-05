@@ -47,7 +47,7 @@ python3 differentiation.py --system=2
     [[paper]](https://arxiv.org/abs/1609.06401)
  
 
-[^2] **Discovering governing equations from data: Sparse identification of nonlinear dynamical systems**
+[^2]: **Discovering governing equations from data: Sparse identification of nonlinear dynamical systems**
     S. L. Brunton, J. L. Proctor, and J. N. Kutz
     *Proceedings of the National Academy of Sciences of the United States of America, vol. 113, no. 15, pp. 3932–3937, 2015*
     [[paper]](https://arxiv.org/abs/1509.03580)
