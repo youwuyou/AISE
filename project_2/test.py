@@ -31,7 +31,12 @@ def main(system=1):
     state_dict = torch.load(model_path, map_location=device, weights_only=True)
 
     # Initialize model, loss function, and optimizer
-    model = Net().to(device)
+    if system == 1:
+        width = 64
+    else:
+        width = 64
+        
+    model = Net(width).to(device)
     model.load_state_dict(state_dict)
     model.to(device)
 

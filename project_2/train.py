@@ -20,14 +20,17 @@ import matplotlib.pyplot as plt
 
 class Net(nn.Module):
     """Simple NN used for approximating spatiotemporal solution u(x, t)"""
-    def __init__(self):
+    def __init__(self, width = 64):
         super(Net, self).__init__()
+
+        self.width = width
+
         self.fc = nn.Sequential(
-            nn.Linear(2, 64),
+            nn.Linear(2, self.width),
             nn.Tanh(),
-            nn.Linear(64, 64),
+            nn.Linear(self.width, self.width),
             nn.Tanh(),
-            nn.Linear(64, 1),
+            nn.Linear(self.width, 1),
         )
         
     def forward(self, x, t):
@@ -43,15 +46,20 @@ def main(system = 1):
     # Specify dataset to load
     if system == 1:
         path = 'data/1.npz'
-        name = "Burgers' Equation"    
+        name = "Burgers' Equation"
+
+        # for NN
+        width = 64
     else:
         path = 'data/2.npz'
         name = "KdV Equation"
 
+        width = 128
+
     data = np.load(path)
-    u = data['u']        # Shape: (256, 101)
-    x = data['x']        # Shape: (256, 1) or (256,)
-    t = data['t']        # Shape: (1, 101) or (101,)
+    u = data['u']
+    x = data['x']
+    t = data['t']
 
     print(f"Shape of u: {u.shape}")
     print(f"Shape of x: {x.shape}")
@@ -82,9 +90,12 @@ def main(system = 1):
 
 
     # Initialize model, loss function, and optimizer
-    model = Net().to(device)
+    model = Net(width).to(device)
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    # optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), 
+                                lr=1e-3,
+                                weight_decay=1e-4)
 
     # Train model
     num_epochs = 1000

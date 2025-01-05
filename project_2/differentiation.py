@@ -15,46 +15,81 @@ import matplotlib.pyplot as plt
 import imageio.v2 as imageio
 import shutil
 
+from visualization import (
+plot_derivatives,
+plot_pde_comparison
+)
+
 from train import Net
+from optimizers import (
+ridge_regression_with_thresholding
+)
+
+from feature_library import (
+build_theta,
+build_u_t,
+generate_candidate_symbols,
+print_discovered_equation
+)
 
 
-# Function to compute derivatives
-def compute_derivatives(model, x, t, derivatives):
+def compute_derivatives(model, x, t, candidates, include_constant=True, include_u=True):
     """
-    Computes specified derivatives of the model output.
-
-    Args:
-        model: The neural network model.
-        x: Spatial input tensor.
-        t: Temporal input tensor.
-        derivatives: List of tuples specifying the derivatives to compute.
-                     Example: [("t", 1), ("x", 2)] to compute ∂u/∂t and ∂²u/∂x².
-
-    Returns:
-        A dictionary with the derivative labels as keys and computed tensors as values.
+    Compute derivatives based on NN model that approximates 1D spatiotemporal u(x,t)
+    - candidates: symbolic expressions are derivatives to be computed need to be specified
     """
     results = {}
     x.requires_grad = True
     t.requires_grad = True
     u = model(x, t)
-
-    for var, order in derivatives:
-        current_derivative = u
-        for _ in range(order):
-            grad_outputs = torch.ones_like(current_derivative)
-            if var == "x":
-                current_derivative = torch.autograd.grad(current_derivative, x, grad_outputs=grad_outputs, create_graph=True)[0]
-            elif var == "t":
-                current_derivative = torch.autograd.grad(current_derivative, t, grad_outputs=grad_outputs, create_graph=True)[0]
-            else:
-                raise ValueError(f"Invalid variable: {var}. Must be 'x' or 't'.")
-        results[f"d{order}u/d{var}{order}"] = current_derivative
-
+    
+    # First compute all basic derivatives we'll need
+    basic_derivatives = {}
+    max_x_order = max(str(expr).count('x') for expr in candidates)
+    max_t_order = max(str(expr).count('t') for expr in candidates)
+    
+    # Add constant term if requested
+    if include_constant:
+        results['constant'] = torch.ones((u.shape[0] * u.shape[1], 1))
+    
+    # Add base function u if requested
+    if include_u:
+        results['u'] = u
+    
+    # Compute x derivatives
+    current = u
+    basic_derivatives['u'] = u
+    for order in range(1, max_x_order + 1):
+        grad = torch.ones_like(current)
+        current = torch.autograd.grad(current, x, grad_outputs=grad, create_graph=True)[0]
+        basic_derivatives[f'u_{"x" * order}'] = current
+    
+    # Compute t derivatives
+    current = u
+    for order in range(1, max_t_order + 1):
+        grad = torch.ones_like(current)
+        current = torch.autograd.grad(current, t, grad_outputs=grad, create_graph=True)[0]
+        basic_derivatives[f'u_{"t" * order}'] = current
+    
+    # Now construct each candidate expression
+    for expr in candidates:
+        str_expr = str(expr)
+                
+        if '*' not in str_expr:
+            # It's a basic derivative, just copy it
+            if str_expr != 'u' or include_u:  # Only include u if requested
+                results[str_expr] = basic_derivatives[str_expr]
+        else:
+            # It's a product
+            terms = str_expr.split('*')
+            # Initialize with first term
+            result = basic_derivatives[terms[0]]
+            # Multiply by subsequent terms
+            for term in terms[1:]:
+                result = result * basic_derivatives[term]
+            results[str_expr] = result
+                
     return results
-
-
-
-
 
 
 
@@ -70,20 +105,19 @@ def main(system=1):
     # Specify dataset to load
     if system == 1:
         path = 'data/1.npz'
-        name = "Burgers' Equation"    
+        name = "Burgers' Equation"
+        width = 32
     else:
         path = 'data/2.npz'
         name = "KdV Equation"
+        width = 128
 
     data = np.load(path)
-    u = data['u']        # Shape: (256, 101)
-    x = data['x']        # Shape: (256, 1) or (256,)
-    t = data['t']        # Shape: (1, 101) or (101,)
 
-    print(f"Shape of u: {u.shape}")
-    print(f"Shape of x: {x.shape}")
-    print(f"Shape of t: {t.shape}")
-
+    # Shape: (256, 101)
+    u = data['u']        
+    x = data['x']
+    t = data['t']
 
     # Data preprocessing
     # Prepare meshgrid
@@ -107,155 +141,177 @@ def main(system=1):
     state_dict = torch.load(model_path, map_location=device, weights_only=True)
 
     # Initialize model, loss function, and optimizer
-    model = Net().to(device)
+    model = Net(width).to(device)
     model.load_state_dict(state_dict)
     model.to(device)
 
     print(f"Model loaded from {model_path}")
 
-    derivatives_to_compute = [("t", 1), ("x", 1), ("x", 2), ("x", 3)]  # Compute u_t, u_x, u_xx, u_xxx
-    derivatives = compute_derivatives(model, x_tensor, t_tensor, derivatives_to_compute)
+    #==================================================
+    # Computing derivatives
+    #==================================================
+    # Use different candidates for different systems
+    if system == 1:
+        candidates = generate_candidate_symbols(
+            max_x_order=2,     # Up to u_xx
+            max_t_order=2,     # Up to u_t
+            binary_ops=['mul'],
+            power_orders=[1],
+            allowed_mul_orders=[(0,1)],
+            exclude_u_t=True
+        )
+    else:
+        candidates = generate_candidate_symbols(
+            max_x_order=3,     # Up to u_xxx
+            max_t_order=1,     # Up to u_t
+            binary_ops=['mul'],
+            power_orders=[1],
+            allowed_mul_orders=[(0,1)]
+        )
 
-    # Access specific derivatives
-    u_t = derivatives["d1u/dt1"]
-    u_x = derivatives["d1u/dx1"]
-    u_xx = derivatives["d2u/dx2"]
-    u_xxx = derivatives["d3u/dx3"]
+    print(f"Generated {len(candidates)} unique expressions for system {system} after simplification")
+    print(f"{candidates}")
 
-    # Compute uu_x as a PyTorch tensor
-    uu_x = u_tensor * u_x
+    # derivatives = compute_derivatives(model, x_tensor, t_tensor, candidates)
+    derivatives = compute_derivatives(model, x_tensor, t_tensor, candidates, 
+                               include_constant=False,
+                               include_u=True)
 
-    # Move derivatives to CPU and reshape
-    u_t_np = u_t.detach().cpu().numpy().reshape(u.shape)
-    u_x_np = u_x.detach().cpu().numpy().reshape(u.shape)
-    u_xx_np = u_xx.detach().cpu().numpy().reshape(u.shape)
-    uu_x_np = uu_x.detach().cpu().numpy().reshape(u.shape)
-    if system == 2:
-        u_xxx_np = u_xxx.detach().cpu().numpy().reshape(u.shape)
+    # Manually filter out some entries
+    derivatives.pop('u')
+    derivatives.pop('u_x')
 
+    removed_candidate = candidates.pop(0)
+    print(f"just removed {removed_candidate}")
+
+    removed_candidate = candidates.pop(0)
+    print(f"just removed {removed_candidate}")
+
+    print(f"derivatives keys: {list(derivatives.keys())}")
+    print(f"Candidates: {candidates}")
+
+    #==================================================
+    # Assemble LSE
+    #==================================================
+    Theta = build_theta(u_tensor, derivatives)
+    u_t   = build_u_t(model, x_tensor, t_tensor)
+
+    #==================================================
+    # Sparse regression for LSE
+    #==================================================
+    # Ridge regression with thresholding
+    lambda_reg = 1e-5  # Example regularization parameter
+    threshold = 1e-3  # Example threshold for hard thresholding
+
+    ξ = ridge_regression_with_thresholding(Theta, u_t, lambda_reg, threshold)
+
+    # The result ξ contains the coefficients of the sparse regression problem
+    print(f"Shape of ξ: {ξ.shape}")
+    print(f"ξ: {ξ}")
+
+    # After running ridge regression:
+    print_discovered_equation(candidates, ξ)    
+
+    #==================================================
+    # Prepare data for plotting
+    #==================================================
+    # # Store all functions (u, u_t, and derivatives) in a single dictionary
+    # functions = {}
+
+    # # Add u and u_t
+    # functions['u'] = u
+    # functions['u_t'] = u_t.detach().cpu().numpy().reshape(u.shape)
+
+    # # Add all derivatives
+    # for key, value in derivatives.items():
+    #     if key != 'constant':  # Skip constant term
+    #         functions[key] = value.detach().cpu().numpy().reshape(u.shape)
+
+    # # After running ridge regression - prepare terms for plotting
+    # lhs_terms = []
+    # rhs_terms = []
+    # threshold = 1e-3  # Use the same threshold as in ridge regression
+
+    # # Loop through candidates and coefficients together
+    # for candidate, coeff in zip(candidates, ξ):
+    #     if abs(coeff) > threshold:  # Only include significant terms
+    #         # Convert tensor to float
+    #         coeff_float = float(coeff.detach())
+            
+    #         # Make sure candidate is a string
+    #         candidate_str = str(candidate)
+            
+    #         # If coefficient is negative, put term on RHS with positive coefficient
+    #         if coeff_float < 0:
+    #             rhs_terms.append((candidate_str, -coeff_float))  # Make coefficient positive
+    #         else:
+    #             lhs_terms.append((candidate_str, coeff_float))
+
+    # # Special handling for u_t term (always on LHS with coefficient 1)
+    # lhs_terms.insert(0, ('u_t', 1.0))
+
+    # print(f"lhs_terms {lhs_terms}")
+    # print(f"rhs_terms {rhs_terms}")
+
+    # # Plot with discovered coefficients
+    # snapshot = u.shape[1] // 5  # Choose a specific time snapshot
+
+    # plot_pde_comparison(
+    #     X=X,
+    #     functions=functions,
+    #     lhs_terms=lhs_terms,
+    #     rhs_terms=rhs_terms,
+    #     snapshot=snapshot,
+    #     results_dir=results_dir
+    # )
+
+    # Store all functions (u, u_t, and derivatives) in a single dictionary
+    functions = {}
+
+    # Add u and u_t
+    functions['u'] = u
+    functions['u_t'] = u_t.detach().cpu().numpy().reshape(u.shape)
+
+    # Add all derivatives
+    for key, value in derivatives.items():
+        if key != 'constant':  # Skip constant term
+            functions[key] = value.detach().cpu().numpy().reshape(u.shape)
+
+    # Call the function with the functions dictionary
+    plot_derivatives(
+        model=model,
+        x_tensor=x_tensor,
+        t_tensor=t_tensor,
+        X=X,
+        t=t,
+        functions=functions,
+        system=system,
+        results_dir=results_dir
+    )
+
+    # Plot 
     # Plot a specific time snapshot and its derivatives
     snapshot = u.shape[1] // 5  # Choose a specific time snapshot, e.g., 1/4th of the total time
-
-    plt.figure(figsize=(18, 12))
-
-    # Evaluation: Compute Predictions and Derivatives
-    model.eval()
-    with torch.no_grad():
-        u_pred = model(x_tensor, t_tensor).cpu().numpy().reshape(u.shape)
-
-
-    # Plot True vs Predicted u
-    plt.subplot(3, 2, 1)
-    plt.plot(X[:, snapshot], u[:, snapshot], label='True u')
-    plt.plot(X[:, snapshot], u_pred[:, snapshot], '--', label='Predicted u')
-    plt.xlabel('x')
-    plt.ylabel('u(x,t)')
-    plt.title(f'u at t = {t[0, snapshot]:.2f}' if t.ndim >1 else f'u at t = {t[snapshot]:.2f}')
-    plt.legend()
-
-    # Plot u_t
-    plt.subplot(3, 2, 2)
-    plt.plot(X[:, snapshot], u_t_np[:, snapshot], label='u_t', color='orange')
-    plt.xlabel('x')
-    plt.ylabel('u_t')
-    plt.title('First Derivative w.r.t t (u_t)')
-    plt.legend()
-
-    # Plot u_x
-    plt.subplot(3, 2, 3)
-    plt.plot(X[:, snapshot], u_x_np[:, snapshot], label='u_x', color='green')
-    plt.xlabel('x')
-    plt.ylabel('u_x')
-    plt.title('First Derivative w.r.t x (u_x)')
-    plt.legend()
-
-    # Plot u_xx
-    plt.subplot(3, 2, 4)
-    plt.plot(X[:, snapshot], u_xx_np[:, snapshot], label='u_xx', color='red')
-    plt.xlabel('x')
-    plt.ylabel('u_xx')
-    plt.title('Second Derivative w.r.t x (u_xx)')
-    plt.legend()
-
-    # Plot u * u_x
-    plt.subplot(3, 2, 5)
-    plt.plot(X[:, snapshot], uu_x_np[:, snapshot], label='u * u_x', color='purple')
-    plt.xlabel('x')
-    plt.ylabel('u * u_x')
-    plt.title('Nonlinear Term (u * u_x)')
-    plt.legend()
-
-    # Plot u_xxx (only for KdV)
-    if system == 2 and 'u_xxx_np' in locals():
-        plt.subplot(3, 2, 6)
-        plt.plot(X[:, snapshot], u_xxx_np[:, snapshot], label='u_xxx', color='brown')
-        plt.xlabel('x')
-        plt.ylabel('u_xxx')
-        plt.title('Third Derivative w.r.t x (u_xxx)')
-        plt.legend()
-    else:
-        # If not KdV, leave the subplot empty with a note
-        plt.subplot(3, 2, 6)
-        plt.axis('off')  # Hide the subplot
-        plt.title('u_xxx not applicable for Burgers\' Equation')
-
-    plt.tight_layout()
-    plt.savefig(f'{results_dir}/derivatives.png')
-    plt.close()
-
     if system == 1:
-        # Compute the residual: u_t + uu_x - u_xx
-        residual = u_t_np + uu_x_np - 0.1 * u_xx_np
-
-        # Plot the comparison between u_t + uu_x and u_xx
-        plt.figure(figsize=(10, 6))
-
-        # Plot u_t + uu_x
-        plt.plot(X[:, snapshot], (u_t_np + uu_x_np)[:, snapshot], label='$u_t + u u_x$', color='darkblue')
-
-        # Plot u_xx
-        plt.plot(X[:, snapshot], 0.1 * u_xx_np[:, snapshot], '--', label='$u_{xx}$', color='crimson')
-
-        # Plot the residual
-        plt.plot(X[:, snapshot], residual[:, snapshot], ':', label='Residual $(u_t + uu_x - 0.1 * u_{xx})$', color='green')
-
-        # Labels and legend
-        plt.xlabel('x')
-        plt.ylabel('Value')
-        plt.title('Comparison of $u_t + uu_x$ and $-u_{xx}$')
-        plt.legend()
-        plt.grid(True)
-
-        # Show the plot
-        plt.savefig(f'{results_dir}/check_sol.png')
-        plt.close()
-
-    elif system == 2:
-        # Compute the residual: u_t + 6uu_x  = -u_xxx
-        residual = u_t_np + 6 * uu_x_np + u_xxx_np
-
-        # Plot the comparison between u_t + uu_x and u_xx
-        plt.figure(figsize=(10, 6))
-
-        # Plot u_t + uu_x
-        plt.plot(X[:, snapshot], (u_t_np + 6 * uu_x_np)[:, snapshot], label='$u_t + 6 u u_x$', color='darkblue')
-
-        # Plot u_xxx
-        plt.plot(X[:, snapshot], -u_xxx_np[:, snapshot], '--', label='$-u_{xxx}$', color='crimson')
-
-        # Plot the residual
-        plt.plot(X[:, snapshot], residual[:, snapshot], ':', label='Residual $(u_t + 6 uu_x + u_{xxx})$', color='green')
-
-        # Labels and legend
-        plt.xlabel('x')
-        plt.ylabel('Value')
-        plt.title('Comparison of $u_t + 6 uu_x$ and $u_{xxx}$')
-        plt.legend()
-        plt.grid(True)
-
-        # Show the plot
-        plt.savefig(f'{results_dir}/check_sol.png')
-        plt.close()
+        # For u_t + u*u_x = 0.1*u_xx
+        plot_pde_comparison(
+            X=X,
+            functions=functions,
+            lhs_terms=[('u_t', 1), ('u*u_x', 1)],
+            rhs_terms=[('u_xx', 0.1)],
+            snapshot=snapshot,
+            results_dir=results_dir
+        )
+    else:
+        # For u_t + 6*u*u_x + u_xxx = 0
+        plot_pde_comparison(
+            X=X,
+            functions=functions,
+            lhs_terms=[('u_t', 1), ('u*u_x', 6), ('u_xxx', 1)],
+            rhs_terms=[],  # Empty list since everything is on LHS
+            snapshot=snapshot,
+            results_dir=results_dir
+        )
 
 
 if __name__ == "__main__":
