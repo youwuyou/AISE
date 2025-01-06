@@ -22,7 +22,8 @@ plot_pde_comparison
 
 from train import Net
 from optimizers import (
-ridge_regression_with_thresholding
+generalized_condition_number,
+STRidge
 )
 
 from feature_library import (
@@ -196,21 +197,29 @@ def main(system=1):
     Theta = build_theta(u_tensor, derivatives)
     u_t   = build_u_t(model, x_tensor, t_tensor)
 
+    # c_theta = np.linalg.cond(Theta.cpu().detach().numpy())
+    # print(f"condition number of Theta is {c_theta}")
+    # condition number of Theta is 4.343603610992432
+    # condition number of Theta is 68.19337463378906
+
+    c_theta = generalized_condition_number(Theta.cpu().detach().numpy())
+    print(f"condition number of Theta is {c_theta}")
+    # condition number of Theta is 4.34360408782959
+    # condition number of Theta is 68.19335174560547
+
     #==================================================
     # Sparse regression for LSE
     #==================================================
     # Ridge regression with thresholding
-    lambda_reg = 1e-5  # Example regularization parameter
-    threshold = 1e-3  # Example threshold for hard thresholding
+    λ = 0.5  # Example regularization parameter
+    tol = 1e-2  # Example threshold for hard thresholding
+    iters = 10
 
-    ξ = ridge_regression_with_thresholding(Theta, u_t, lambda_reg, threshold)
-
-    # The result ξ contains the coefficients of the sparse regression problem
-    print(f"Shape of ξ: {ξ.shape}")
-    print(f"ξ: {ξ}")
+    ξ = STRidge(Theta, u_t, λ, tol, iters)
+    print(f"Found coefficients {ξ}")
 
     # After running ridge regression:
-    print_discovered_equation(candidates, ξ)    
+    print_discovered_equation(candidates, ξ)
 
     #==================================================
     # Prepare data for plotting
