@@ -74,7 +74,7 @@ def print_discovered_equation(candidates, ξ, threshold=1e-4):
     significant_terms = []
     for i, (coeff, expr) in enumerate(zip(ξ, candidates)):
         if abs(coeff) > threshold:
-            term = f"{coeff[0]:.6f}*{expr}" if expr != 'constant' else f"{coeff[0]:.6f}"
+            term = f"{coeff:.6f}*{expr}" if expr != 'constant' else f"{coeff:.6f}"
             significant_terms.append(term)
     
     # Print equation
@@ -126,9 +126,6 @@ def generate_candidate_symbols(max_x_order=2,
     
     # Generate temporal derivatives, excluding u_t if specified
     t_syms = set()
-    # for n in range(1, max_t_order+1):
-    #     sym = sp.Symbol(f'u_{"t"*n}')
-    #     t_syms.add(sym)
 
     for n in range(1, max_t_order+1):
         sym = sp.Symbol(f'u_{"t"*n}')
