@@ -70,21 +70,17 @@ def print_discovered_equation(candidates, ξ, threshold=1e-4):
     print("\nDiscovered equation:")
     print("u_t = ", end="")
     
-    # Get non-zero terms
-    significant_terms = []
-    for i, (coeff, expr) in enumerate(zip(ξ, candidates)):
-        if abs(coeff) > threshold:
-            term = f"{coeff:.6f}*{expr}" if expr != 'constant' else f"{coeff:.6f}"
-            significant_terms.append(term)
-    
-    # Print equation
-    if significant_terms:
-        print(" + ".join(significant_terms))
-    else:
-        print("0")
-    
-    print("\n")
-
+    terms = []
+    for coeff, expr in zip(ξ, candidates):
+        c = float(coeff)  # convert to float
+        if abs(c) > threshold:
+            if expr == 'constant':
+                terms.append(f"{c:.6f}")
+            else:
+                terms.append(f"{c:.6f}*{expr}")
+                
+    print(" + ".join(terms) if terms else "0")
+    print()
 
 def simplify_expression(expr):
     # Basic simplification
@@ -103,7 +99,7 @@ def get_symbol_order(sym):
     str_sym = str(sym)
     return str_sym.count('x') + str_sym.count('t')
 
-def generate_candidate_symbols(max_x_order=2, 
+def generate_candidate_symbols(max_x_order=2,
                         max_t_order=2, 
                         binary_ops=None, 
                         power_orders=None, 
@@ -177,7 +173,6 @@ def generate_candidate_symbols(max_x_order=2,
     return sorted(expressions, key=lambda x: len(str(x)))
 
 if __name__ == "__main__":
-
     # Generated candidates are just strings, not the numeric values of derivative functions
     candidates = generate_candidate_symbols(
         max_x_order=3,     # Up to u_xxx
