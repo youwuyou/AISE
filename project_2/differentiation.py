@@ -25,7 +25,8 @@ plot_pde_comparison
 from train import Net
 from optimizers import (
 generalized_condition_number,
-STRidge
+STRidge,
+TrainSTRidge
 )
 
 from feature_library import (
@@ -36,10 +37,10 @@ print_discovered_equation
 )
 
 
-def compute_derivatives(model, x, t, candidates, include_constant=True, include_u=True):
+def compute_derivatives(model, x, t, symbols, include_constant=True, include_u=True):
     """
     Compute derivatives based on NN model that approximates 1D spatiotemporal u(x,t)
-    - candidates: symbolic expressions are derivatives to be computed need to be specified
+    - symbols: symbolic expressions are derivatives to be computed need to be specified
     """
     results = {}
     x.requires_grad = True
@@ -48,12 +49,12 @@ def compute_derivatives(model, x, t, candidates, include_constant=True, include_
     
     # First compute all basic derivatives we'll need
     basic_derivatives = {}
-    max_x_order = max(str(expr).count('x') for expr in candidates)
-    max_t_order = max(str(expr).count('t') for expr in candidates)
+    max_x_order = max(str(expr).count('x') for expr in symbols)
+    max_t_order = max(str(expr).count('t') for expr in symbols)
     
     # Add constant term if requested
     if include_constant:
-        results['constant'] = torch.ones((u.shape[0] * u.shape[1], 1))
+        results['1'] = torch.ones((u.shape[0] * u.shape[1], 1))
     
     # Add base function u if requested
     if include_u:
@@ -75,7 +76,7 @@ def compute_derivatives(model, x, t, candidates, include_constant=True, include_
         basic_derivatives[f'u_{"t" * order}'] = current
     
     # Now construct each candidate expression
-    for expr in candidates:
+    for expr in symbols:
         str_expr = str(expr)
                 
         if '*' not in str_expr:
@@ -155,45 +156,37 @@ def main(system=1):
     #==================================================
     # Computing derivatives
     #==================================================
-    # Use different candidates for different systems
+    # Select different candidate symbols for different systems
     if system == 1:
-        candidates = generate_candidate_symbols(
-            max_x_order=2,     # Up to u_xx
-            max_t_order=2,     # Up to u_t
+        symbols = generate_candidate_symbols(
+            max_x_order=3,     # Up to u_xxx
+            max_t_order=0,
             binary_ops=['mul'],
             power_orders=[1],
-            allowed_mul_orders=[(0,1)],
+            allowed_mul_orders=[(0,1), (0,2)],
             exclude_u_t=True
         )
     else:
-        candidates = generate_candidate_symbols(
+        symbols = generate_candidate_symbols(
             max_x_order=3,     # Up to u_xxx
-            max_t_order=1,     # Up to u_t
+            max_t_order=0,
             binary_ops=['mul'],
             power_orders=[1],
-            allowed_mul_orders=[(0,1)]
+            allowed_mul_orders=[(0,1), (0,2)],
+            exclude_u_t=True
         )
 
-    print(f"Generated {len(candidates)} unique expressions for system {system} after simplification")
-    print(f"{candidates}")
-
-    # derivatives = compute_derivatives(model, x_tensor, t_tensor, candidates)
-    derivatives = compute_derivatives(model, x_tensor, t_tensor, candidates, 
-                               include_constant=False,
+    derivatives = compute_derivatives(model, x_tensor, t_tensor, symbols, 
+                               include_constant=True,
                                include_u=True)
 
     # Manually filter out some entries
-    derivatives.pop('u')
+    # derivatives.pop('u')
+    # derivatives.pop('u_t')
     derivatives.pop('u_x')
 
-    removed_candidate = candidates.pop(0)
-    print(f"just removed {removed_candidate}")
-
-    removed_candidate = candidates.pop(0)
-    print(f"just removed {removed_candidate}")
-
-    print(f"derivatives keys: {list(derivatives.keys())}")
-    print(f"Candidates: {candidates}")
+    print(f"{len(list(derivatives.keys()))} derivatives keys: {list(derivatives.keys())}")
+    candidates = list(derivatives.keys())
 
     #==================================================
     # Assemble LSE
@@ -214,70 +207,28 @@ def main(system=1):
     #==================================================
     # Sparse regression for LSE
     #==================================================
-    # Ridge regression with thresholding
-    λ = 0.5  # Example regularization parameter
-    tol = 1e-2  # Example threshold for hard thresholding
-    iters = 10
+    # Assembling Theta and u_t
+    Theta_np = Theta.cpu().detach().numpy()
+    u_t_np = u_t.cpu().detach().numpy()
 
-    ξ = STRidge(Theta, u_t, λ, tol, iters)
-    print(f"Found coefficients {ξ}")
+    ξ_best = TrainSTRidge(
+        Theta_np, u_t_np,
+        lam=1e-6,
+        d_tol=5e-3,
+        maxit=10,
+        STR_iters=10,
+        l0_penalty=None,
+        split=0.7,
+        print_best_tol=True
+    )
+    print(f"Found coefficients {ξ_best}")
 
     # After running ridge regression:
-    print_discovered_equation(candidates, ξ)
+    print_discovered_equation(candidates, ξ_best)
 
     #==================================================
     # Prepare data for plotting
     #==================================================
-    # # Store all functions (u, u_t, and derivatives) in a single dictionary
-    # functions = {}
-
-    # # Add u and u_t
-    # functions['u'] = u
-    # functions['u_t'] = u_t.detach().cpu().numpy().reshape(u.shape)
-
-    # # Add all derivatives
-    # for key, value in derivatives.items():
-    #     if key != 'constant':  # Skip constant term
-    #         functions[key] = value.detach().cpu().numpy().reshape(u.shape)
-
-    # # After running ridge regression - prepare terms for plotting
-    # lhs_terms = []
-    # rhs_terms = []
-    # threshold = 1e-3  # Use the same threshold as in ridge regression
-
-    # # Loop through candidates and coefficients together
-    # for candidate, coeff in zip(candidates, ξ):
-    #     if abs(coeff) > threshold:  # Only include significant terms
-    #         # Convert tensor to float
-    #         coeff_float = float(coeff.detach())
-            
-    #         # Make sure candidate is a string
-    #         candidate_str = str(candidate)
-            
-    #         # If coefficient is negative, put term on RHS with positive coefficient
-    #         if coeff_float < 0:
-    #             rhs_terms.append((candidate_str, -coeff_float))  # Make coefficient positive
-    #         else:
-    #             lhs_terms.append((candidate_str, coeff_float))
-
-    # # Special handling for u_t term (always on LHS with coefficient 1)
-    # lhs_terms.insert(0, ('u_t', 1.0))
-
-    # print(f"lhs_terms {lhs_terms}")
-    # print(f"rhs_terms {rhs_terms}")
-
-    # # Plot with discovered coefficients
-    # snapshot = u.shape[1] // 5  # Choose a specific time snapshot
-
-    # plot_pde_comparison(
-    #     X=X,
-    #     functions=functions,
-    #     lhs_terms=lhs_terms,
-    #     rhs_terms=rhs_terms,
-    #     snapshot=snapshot,
-    #     results_dir=results_dir
-    # )
-
     # Store all functions (u, u_t, and derivatives) in a single dictionary
     functions = {}
 
