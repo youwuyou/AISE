@@ -9,6 +9,8 @@ import json
 import argparse
 
 import torch
+import torch.nn as nn
+
 import numpy as np
 import matplotlib.pyplot as plt
 import imageio.v2 as imageio
@@ -25,33 +27,29 @@ def main(system=1):
     results_dir = f"results/system_{system}"
     os.makedirs(results_dir, exist_ok=True)
 
-
     # Load the saved model
     model_path = f'checkpoints/system_{system}/model.pth'
     state_dict = torch.load(model_path, map_location=device, weights_only=True)
 
     # Initialize model, loss function, and optimizer
     if system == 1:
-        width = 64
-    else:
-        width = 64
-        
-    model = Net(width).to(device)
-    model.load_state_dict(state_dict)
-    model.to(device)
-
-    print(f"Model loaded from {model_path}")
-
-
-    # Evaluation: Preparation of Dataset
-    if system == 1:
         path = 'data/1.npz'
         name = "Burgers' Equation"
+        width = 64
+        activation_fun = nn.Tanh()
     elif system == 2:
         path = 'data/2.npz'
         name = "KdV Equation"
-    print(f"Testing on dataset loaded from {path}")
+        width = 64
+        activation_fun = nn.GELU()
+        
+    model = Net(width=width, activation_fun=activation_fun).to(device)
+    model.load_state_dict(state_dict)
+    model.to(device)
+    print(f"Model loaded from {model_path}")
 
+    # Evaluation: Preparation of Dataset
+    print(f"Testing on dataset loaded from {path}")
     data = np.load(path)
     u = data['u']        
     x = data['x']

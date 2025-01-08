@@ -10,6 +10,8 @@ import json
 import argparse
 
 import torch
+import torch.nn as nn
+
 import numpy as np
 import matplotlib.pyplot as plt
 import imageio.v2 as imageio
@@ -107,11 +109,13 @@ def main(system=1):
     if system == 1:
         path = 'data/1.npz'
         name = "Burgers' Equation"
-        width = 32
+        activation_fun = nn.Tanh()
+        width = 64 # 3.88%
     else:
         path = 'data/2.npz'
         name = "KdV Equation"
-        width = 128
+        activation_fun = nn.GELU()
+        width = 64 # 4.79%
 
     data = np.load(path)
 
@@ -142,7 +146,7 @@ def main(system=1):
     state_dict = torch.load(model_path, map_location=device, weights_only=True)
 
     # Initialize model, loss function, and optimizer
-    model = Net(width).to(device)
+    model = Net(width=width, activation_fun=activation_fun).to(device)
     model.load_state_dict(state_dict)
     model.to(device)
 
@@ -312,12 +316,12 @@ def main(system=1):
             results_dir=results_dir
         )
     else:
-        # For u_t + 6*u*u_x + u_xxx = 0
+        # For u_t + 6*u*u_x = - u_xxx
         plot_pde_comparison(
             X=X,
             functions=functions,
-            lhs_terms=[('u_t', 1), ('u*u_x', 6), ('u_xxx', 1)],
-            rhs_terms=[],  # Empty list since everything is on LHS
+            lhs_terms=[('u_t', 1), ('u*u_x', 6)],
+            rhs_terms=[('u_xxx', -1)],  # Empty list since everything is on LHS
             snapshot=snapshot,
             results_dir=results_dir
         )

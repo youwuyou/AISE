@@ -20,22 +20,24 @@ import matplotlib.pyplot as plt
 
 class Net(nn.Module):
     """Simple NN used for approximating spatiotemporal solution u(x, t)"""
-    def __init__(self, width = 64):
+    def __init__(self, width = 64, activation_fun = nn.Tanh()):
         super(Net, self).__init__()
-
         self.width = width
 
-        self.fc = nn.Sequential(
-            nn.Linear(2, self.width),
-            nn.Tanh(),
-            nn.Linear(self.width, self.width),
-            nn.Tanh(),
-            nn.Linear(self.width, 1),
-        )
+        # Layers
+        self.fc0 = nn.Linear(2, self.width)
+        self.fc1 = nn.Linear(self.width, self.width)
+        self.fc2 = nn.Linear(self.width, 1)
+        self.activation = activation_fun
         
     def forward(self, x, t):
-        inp = torch.cat([x, t], dim=1)
-        return self.fc(inp)
+        X = torch.cat([x, t], dim=1)
+        X = self.fc0(X)
+        X = self.activation(X)
+        X = self.fc1(X)
+        X = self.activation(X)
+        X = self.fc2(X)
+        return X
 
 
 def main(system = 1):
@@ -47,14 +49,14 @@ def main(system = 1):
     if system == 1:
         path = 'data/1.npz'
         name = "Burgers' Equation"
+        activation_fun = nn.Tanh()
 
-        # for NN
         width = 64
     else:
         path = 'data/2.npz'
         name = "KdV Equation"
-
-        width = 128
+        activation_fun = nn.GELU()
+        width = 64
 
     data = np.load(path)
     u = data['u']
@@ -90,7 +92,7 @@ def main(system = 1):
 
 
     # Initialize model, loss function, and optimizer
-    model = Net(width).to(device)
+    model = Net(width=width, activation_fun=activation_fun).to(device)
     criterion = nn.MSELoss()
     # optimizer = optim.Adam(model.parameters(), lr=1e-3)
     optimizer = torch.optim.AdamW(model.parameters(), 
