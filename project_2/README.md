@@ -4,7 +4,7 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 ## Getting Started
 
-We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2,3\}$ for $3$ different PDE systems) with
+We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2,3\}$ for $3$ different PDE systems) with:
 
 ```python
 # Train NN to approximate u(x,t) of the system 2
@@ -46,12 +46,11 @@ python3 differentiation.py --system=2
 
 The feature library can now be built very easily because the results from automatic differentiation are already column vectors in our target shape. The only thing we need to do now is to assign these values column-wise to the $\Theta$ matrix.
 
-We provide concise utility functions `build_theta` and `build_u_t` for assembling the sparse LSE that can be directly used in the upcoming regression.
-
+We provide concise utility functions `build_theta` and `build_u_t` for assembling the sparse LSE that can be directly used in the upcoming regression. The implementation of the algorithm can be found under [`optimizers.py`](https://github.com/youwuyou/AISE/blob/main/project_2/optimizers.py)
 
 ### Sparse Linear Regression for Solving the LSE
 
-TODO:
+We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$.
 
 
 [^1]: **Data-driven discovery of partial differential equations**
