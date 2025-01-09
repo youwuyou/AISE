@@ -4,6 +4,30 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 ## Getting Started
 
+
+For system 1 & 2:
+
+```python
+# Run PDE-Find and obtain symbols of governing equation for system 1
+python3 evaluate.py --system=1
+
+# Similarly for system 2
+python3 evaluate.py --system=2
+```
+
+For system 3, we have a coupled system on 2D data. To evaluate it, run:
+
+```python
+# Run PDE-Find and obtain symbols of governing equation for system 3
+python3 evaluate_2d.py
+```
+
+| System | Original Solution $u$ | Original Velocity $v$ |
+| --- | --- | --- |
+| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
+
+## Implementation
+
 We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2,3\}$ for $3$ different PDE systems) with:
 
 ```python
@@ -36,11 +60,6 @@ The symbols can be passed to different actual compute kernels that compute the s
 ### Automatic Differentiation
 
 We opted to use the neural network-based approach for computing derivatives. The main motivation of this is because we want to leverage the power of automatic differentiation.
-
-```python
-# Test out quality of approximation of the derivative computation
-python3 differentiation.py --system=2
-```
 
 ### Building the Feature Library
 
