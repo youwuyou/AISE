@@ -140,6 +140,9 @@ def main(system=1):
     Theta_np = Theta.cpu().detach().numpy()
     u_t_np = u_t.cpu().detach().numpy()
 
+    print(f"shape of Theta_np is {Theta_np.shape}")
+    print(f"shape of u_t_np is {u_t_np.shape}")
+
     if system == 1:
         λ = 1e-6
         maxiter = 50
@@ -169,6 +172,10 @@ def main(system=1):
     )
     # After running ridge regression:
     print_discovered_equation(candidates, ξ_best)
+
+    # Print error
+    error = np.linalg.norm(u_t_np - Theta_np @ ξ_best, 2) / np.linalg.norm(u_t_np, 2)
+    print(f"Relative L2 error {error * 100}% ")
 
     #==================================================
     # Prepare data for plotting
