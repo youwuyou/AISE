@@ -63,7 +63,6 @@ def main(system=1):
 
         # Training config
         num_epochs = 300
-        # batch_size = 128
         batch_size = 64
         learning_rate = 1e-3
         weight_decay  = 1e-4

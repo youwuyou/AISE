@@ -22,6 +22,11 @@ we found the following equation for system 1:
 
 $$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140*u_\mathbf{x x} $$
 
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE:
+
+```bash
+Relative L2 error 3.2963931560516357%
+```
 
 ### For system 2
 For the second PDE solutions given by the dataset `2.npz`, the same `evaluate.py` script is used, because we have again 1D solutions for one specific PDE:
@@ -42,22 +47,49 @@ $$
 u_\mathbf{t} = -5.964103 \cdot u u_\mathbf{x} -0.987782 \cdot u_\mathbf{xxx}
 $$
 
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE:
+
+```bash
+Relative L2 error 4.338796615600586% 
+```
+
+
 ### For system 3
 
-Now, we have a coupled system on 2D data and we use another script `evalute_2d.py`. To evaluate it, run:
+Now, we have a coupled system on 2D data. By passing `create_gif = True` to the `main` function, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
+
+| System | Original Solution $u$ | Original Velocity $v$ |
+| --- | --- | --- |
+| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
+
+
+
+To apply the PDE-Find method on it, we use another script `evalute_2d.py`. To evaluate it, run:
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 3
 python3 evaluate_2d.py
 ```
 
-| System | Original Solution $u$ | Original Velocity $v$ |
-| --- | --- | --- |
-| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
+we used 23 candidates function to build the feature library $\Theta$, which will be used in the LSE for both $u_\mathbf{t}$ and $v_\mathbf{t}$
+
+```
+candidates ['u', 'u_x', 'u_y', 'u_xx', 'u_yy', 'u_xy', 'u**4', 'u**3', 'u**2', 'v', 'v_x', 'v_y', 'v_xx', 'v_yy', 'v_xy', 'v**4', 'v**3', 'v**2', 'u*v', 'u*v**2', 'u**2*v', 'u*v**3', 'u**3*v']
+```
+
+We obtain the following two equations
+
+$$
+u_t = 0.978845 \cdot u + 0.099731 \cdot u_{\mathbf{xx}} + 0.139817 \cdot u_{\mathbf{yy}} - 0.952589 \cdot u^3 + 0.993481 \cdot v^3 - 0.955152 \cdot u \cdot v^2 + 0.992257 \cdot u^2 \cdot v \\
+v_t = -0.987519 \cdot u^3 + 1.175099 \cdot v + 0.106914 \cdot v_{\mathbf{xx}} + 0.152016 \cdot v_{\mathbf{yy}} - 1.159284 \cdot v^3 - 0.999191 \cdot u \cdot v^2 - 1.160521 \cdot u^2 \cdot v
+$$
+
+each with an relative L2 error of $11.80157470703125\%$ and $12.238569259643555\%$ respectively.
+
 
 ## Implementation
 
-We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2,3\}$ for $3$ different PDE systems) with:
+We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2\}$ for $2$ different PDE systems) with:
 
 ```python
 # Train NN to approximate u(x,t) of the system 2
