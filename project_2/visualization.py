@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 
 import torch
 
-
 def plot_derivatives(model, x_tensor, t_tensor, X, t, functions, snapshot=None, system=1, results_dir='results'):
     """
     Plot the neural network solution and its derivatives
@@ -17,10 +16,6 @@ def plot_derivatives(model, x_tensor, t_tensor, X, t, functions, snapshot=None, 
         system: System identifier (1 for Burgers, 2 for KdV)
         results_dir: Directory to save plots
     """
-    # Print shapes for all functions
-    for key, value in functions.items():
-        print(f"shape of {key}: {value.shape}")
-
     # Choose snapshot if not provided
     if snapshot is None:
         snapshot = functions['u'].shape[1] // 5
@@ -202,3 +197,58 @@ def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_di
     plt.close()
     
     return relative_l2_error
+
+#============================================
+#  2D Visualization
+#============================================
+import imageio
+import shutil
+
+def plot_2d_heatmap_anim(data, times, X, Y, variable_name, results_dir):
+    """Helper function to generate animation for a single variable"""
+    x_min, x_max = X.min(), X.max()
+    y_min, y_max = Y.min(), Y.max()
+    snapshots = data.shape[2]
+
+    # Create frames directory for this variable
+    frames_dir = os.path.join(results_dir, f"frames_{variable_name}")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    # Generate frames
+    plt.figure(figsize=(10, 8))
+    for i in range(snapshots):
+        plt.clf()  # Clear the current figure
+        plt.imshow(data[:, :, i], extent=[x_min, x_max, y_min, y_max],
+                  origin='lower', cmap='coolwarm')
+        plt.colorbar(label=f'{variable_name}(x,y,t)')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        
+        # Handle time value display based on T array shape
+        if times.ndim == 1:
+            time_val = times[i]
+        else:
+            time_val = times[0, i] if times.shape[0] == 1 else times[i, 0]
+            
+        plt.title(f'{variable_name} at time step {i}')
+        
+        # Save frame
+        plt.savefig(f'{frames_dir}/frame_{i:04d}.png')
+        
+        if i % 20 == 0:  # Progress indicator
+            print(f"Generated frame {i}/{snapshots} for {variable_name}")
+
+    plt.close()
+
+    # Create animated GIF
+    gif_path = os.path.join(results_dir, f'original_data_{variable_name}.gif')
+    print(f"Creating GIF for {variable_name}...")
+    
+    with imageio.get_writer(gif_path, mode='I', duration=0.1) as writer:
+        for i in range(snapshots):
+            frame = imageio.imread(f'{frames_dir}/frame_{i:04d}.png')
+            writer.append_data(frame)
+
+    # Clean up temporary frames
+    shutil.rmtree(frames_dir)
+    print(f"GIF saved as '{gif_path}'")
