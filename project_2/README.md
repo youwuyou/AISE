@@ -80,14 +80,14 @@ candidates ['u', 'u_x', 'u_y', 'u_xx', 'u_yy', 'u_xy', 'u**4', 'u**3', 'u**2', '
 We obtain the following two equations
 
 $$
-u_t = 0.978845 \cdot u + 0.099731 \cdot u_{\mathbf{xx}} + 0.139817 \cdot u_{\mathbf{yy}} - 0.952589 \cdot u^3 + 0.993481 \cdot v^3 - 0.955152 \cdot u \cdot v^2 + 0.992257 \cdot u^2 \cdot v
+u_\mathbf{t} = 0.978845 \cdot u + 0.099731 \cdot u_{\mathbf{xx}} + 0.139817 \cdot u_{\mathbf{yy}} - 0.952589 \cdot u^3 + 0.993481 \cdot v^3 - 0.955152 \cdot u \cdot v^2 + 0.992257 \cdot u^2 \cdot v
 $$
 
 $$
-v_t = -0.987519 \cdot u^3 + 1.175099 \cdot v + 0.106914 \cdot v_{\mathbf{xx}} + 0.152016 \cdot v_{\mathbf{yy}} - 1.159284 \cdot v^3 - 0.999191 \cdot u \cdot v^2 - 1.160521 \cdot u^2 \cdot v
+v_\mathbf{t} = -0.987519 \cdot u^3 + 1.175099 \cdot v + 0.106914 \cdot v_{\mathbf{xx}} + 0.152016 \cdot v_{\mathbf{yy}} - 1.159284 \cdot v^3 - 0.999191 \cdot u \cdot v^2 - 1.160521 \cdot u^2 \cdot v
 $$
 
-each with an relative L2 error of $11.80157470703125\%$ and $12.238569259643555\%$ respectively.
+each with an relative L2 error of $11.80157470703125$% and $12.238569259643555$% respectively.
 
 
 ## Implementation
