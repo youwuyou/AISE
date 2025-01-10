@@ -6,59 +6,10 @@ Main module that uses PDE-Find for 2D coupled PDE system
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import imageio
-import shutil
 
-def generate_animation(data, times, X, Y, variable_name, results_dir):
-    """Helper function to generate animation for a single variable"""
-    x_min, x_max = X.min(), X.max()
-    y_min, y_max = Y.min(), Y.max()
-    snapshots = data.shape[2]
+from visualization import plot_2d_heatmap_anim
 
-    # Create frames directory for this variable
-    frames_dir = os.path.join(results_dir, f"frames_{variable_name}")
-    os.makedirs(frames_dir, exist_ok=True)
-
-    # Generate frames
-    plt.figure(figsize=(10, 8))
-    for i in range(snapshots):
-        plt.clf()  # Clear the current figure
-        plt.imshow(data[:, :, i], extent=[x_min, x_max, y_min, y_max],
-                  origin='lower', cmap='coolwarm')
-        plt.colorbar(label=f'{variable_name}(x,y,t)')
-        plt.xlabel('x')
-        plt.ylabel('y')
-        
-        # Handle time value display based on T array shape
-        if times.ndim == 1:
-            time_val = times[i]
-        else:
-            time_val = times[0, i] if times.shape[0] == 1 else times[i, 0]
-            
-        plt.title(f'{variable_name} at time step {i}')
-        
-        # Save frame
-        plt.savefig(f'{frames_dir}/frame_{i:04d}.png')
-        
-        if i % 20 == 0:  # Progress indicator
-            print(f"Generated frame {i}/{snapshots} for {variable_name}")
-
-    plt.close()
-
-    # Create animated GIF
-    gif_path = os.path.join(results_dir, f'original_data_{variable_name}.gif')
-    print(f"Creating GIF for {variable_name}...")
-    
-    with imageio.get_writer(gif_path, mode='I', duration=0.1) as writer:
-        for i in range(snapshots):
-            frame = imageio.imread(f'{frames_dir}/frame_{i:04d}.png')
-            writer.append_data(frame)
-
-    # Clean up temporary frames
-    shutil.rmtree(frames_dir)
-    print(f"GIF saved as '{gif_path}'")
-
-def main():
+def main(create_gif=False):
     system = 3
     path = f'data/{system}.npz'
     name = "Reaction-Diffusion Equation"
@@ -84,12 +35,83 @@ def main():
     print(f"({nx}, {ny}) 2D spatial points, {snapshots} time snapshots in total")
     print(f"Time array shape: {T.shape}")
 
+
+    #=================================================
+    # Computing derivatives
+    #==================================================
+    # # Select different candidate symbols for different systems
+    # if system == 1:
+    #     symbols = generate_candidate_symbols(
+    #         max_x_order=3,     # Up to u_xxx
+    #         max_t_order=0,
+    #         binary_ops=['mul'],
+    #         power_orders=[1],
+    #         allowed_mul_orders=[(0,1), (0,2)],
+    #         exclude_u_t=True
+    #     )
+    # else:
+    #     symbols = generate_candidate_symbols(
+    #         max_x_order=3,     # Up to u_xxx
+    #         max_t_order=0,
+    #         binary_ops=['mul'],
+    #         power_orders=[1],
+    #         allowed_mul_orders=[(0,1), (0,2)],
+    #         exclude_u_t=True
+    #     )
+
+    # derivatives = compute_derivatives_autodiff(model, x_tensor, t_tensor, symbols, 
+    #                            include_constant=True,
+    #                            include_u=True)
+
+    # # Manually filter out some entries
+    # # derivatives.pop('u')
+    # # derivatives.pop('u_t')
+    # derivatives.pop('u_x')
+
+    # print(f"{len(list(derivatives.keys()))} derivatives keys: {list(derivatives.keys())}")
+    # candidates = list(derivatives.keys())
+
+
+    #==================================================
+    # Assemble LSE
+    #==================================================
+    Theta = build_theta(u_tensor, derivatives)
+    u_t   = build_u_t(model, x_tensor, t_tensor)
+
+    c_theta = generalized_condition_number(Theta.cpu().detach().numpy())
+    print(f"condition number of Theta is {c_theta}")
+
+    #==================================================
+    # Sparse regression for LSE
+    #==================================================
+    # TODO: we probably need to solve two LSE here?
+    # # Assembling Theta and u_t
+    # Theta_np = Theta.cpu().detach().numpy()
+    # u_t_np = u_t.cpu().detach().numpy()
+
+    # ξ_best = TrainSTRidge(
+    #     Theta_np, u_t_np,
+    #     lam=1e-6,
+    #     d_tol=5e-3,
+    #     maxit=10,
+    #     STR_iters=10,
+    #     l0_penalty=None,
+    #     split=0.7,
+    #     print_best_tol=True
+    # )
+    # print(f"Found coefficients {ξ_best}")
+
+    # # After running ridge regression:
+    # print_discovered_equation(candidates, ξ_best)
+
+
     # Generate animations for both U and V
-    print("\nProcessing U variable...")
-    generate_animation(U, T, X, Y, "u", results_dir)
-    
-    print("\nProcessing V variable...")
-    generate_animation(V, T, X, Y, "v", results_dir)
+    if create_gif:
+        print("\nProcessing U variable...")
+        plot_2d_heatmap_anim(U, T, X, Y, "u", results_dir)
+        
+        print("\nProcessing V variable...")
+        plot_2d_heatmap_anim(V, T, X, Y, "v", results_dir)
 
     print(f"\nAll results saved in {results_dir}")
 
