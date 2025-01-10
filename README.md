@@ -49,7 +49,7 @@ The repository consists of three main projects:
 |-------------------------------|-------------------|------------------|---------------|
 | 1. 1D Wave Equation (FNO) | ✅  | N/A   | ✅  |
 | Bonus 1: All2all Training     | ✅    | N/A | ✅  |
-| 2. PDE-Find   | ⏳ Not Started    | ⏳ Not Started   | ⏳ |
+| 2. PDE-Find   | ✅    | N/A   | 🚧 |
 | 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  |
 | Bonus 2: Stability Analysis    | ⏳ Not Started    | N/A    | ⏳            |
 
