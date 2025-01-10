@@ -4,8 +4,11 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 ## Getting Started
 
+In our project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
-### For system 1:
+However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform automatic differentiation directly on the dataset.
+
+### For system 1 (FNN + automatic differentiation):
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 1
@@ -20,7 +23,7 @@ running the PDE-Find algorithm based on 31 candidates
 
 we found the following equation for system 1:
 
-$$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140*u_\mathbf{x x} $$
+$$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140 \cdot u_\mathbf{x x} $$
 
 With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE:
 
@@ -28,7 +31,7 @@ With these coefficients, we compute the error between the LHS and the RHS and ob
 Relative L2 error 3.2963931560516357%
 ```
 
-### For system 2
+### For system 2 (FNN + automatic differentiation)
 For the second PDE solutions given by the dataset `2.npz`, the same `evaluate.py` script is used, because we have again 1D solutions for one specific PDE:
 
 ```bash
@@ -54,17 +57,9 @@ Relative L2 error 4.338796615600586%
 ```
 
 
-### For system 3
+### For system 3 (Direct automatic differentiation)
 
-Now, we have a coupled system on 2D data. By passing `create_gif = True` to the `main` function, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
-
-| System | Original Solution $u$ | Original Velocity $v$ |
-| --- | --- | --- |
-| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
-
-
-
-To apply the PDE-Find method on it, we use another script `evalute_2d.py`. To evaluate it, run:
+To apply the PDE-Find method on the third coupled PDE system, we use another script `evalute_2d.py`. To evaluate it, run:
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 3
@@ -90,9 +85,10 @@ $$
 each with an relative L2 error of $11.80157470703125$% and $12.238569259643555$% respectively.
 
 
-## Implementation
 
-We trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2\}$ for $2$ different PDE systems) with:
+## 1D Implementation
+
+As we said before, for affordable 1D datasets, we trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2\}$ for $2$ different PDE systems) with:
 
 ```python
 # Train NN to approximate u(x,t) of the system 2
@@ -133,7 +129,21 @@ We provide concise utility functions `build_theta` and `build_u_t` for assemblin
 
 ### Sparse Linear Regression for Solving the LSE
 
-We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$.
+We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$. In addition, we also implemented the algorithm 2 `TrainSTRidge` as in the original paper for automatic selecting the best parameters based on customizable split on the dataset, this function wraps around the `STRidge` and is called instead.
+
+
+## 2D Implementation
+
+On this dataset, we did not train a FNN, but performed the automatic differentiation directly as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
+
+By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
+
+| System | Original Solution $u$ | Original Velocity $v$ |
+| --- | --- | --- |
+| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
+
+
+For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
 
 
 [^1]: **Data-driven discovery of partial differential equations**
