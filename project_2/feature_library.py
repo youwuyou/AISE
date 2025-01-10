@@ -59,7 +59,7 @@ def build_u_t(model, x, t):
 # Part 2: Symbolic Selection of Candidates
 #==================================================
 
-def print_discovered_equation(candidates, ξ, threshold=1e-4):
+def print_discovered_equation(candidates, ξ, threshold=1e-4, f_symbol="u"):
     """
     Print the discovered equation in a readable format
     
@@ -67,9 +67,10 @@ def print_discovered_equation(candidates, ξ, threshold=1e-4):
         candidates: List of symbolic expressions used
         ξ: Solution vector from ridge regression
         threshold: Minimum coefficient magnitude to include in equation
+        f_symbol: Symbol representing the dependent variable in the equation
     """
     print("\nDiscovered equation:")
-    print("u_t = ", end="")
+    print(f"{f_symbol} = ", end="")
     
     terms = []
     for coeff, expr in zip(ξ, candidates):

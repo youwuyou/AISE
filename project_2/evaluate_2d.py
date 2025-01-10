@@ -3,11 +3,59 @@ Main module that uses PDE-Find for 2D coupled PDE system
 - Finishes prediction of the governing equations of the PDE system
 """
 
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 
 from visualization import plot_2d_heatmap_anim
+
+from optimizers import (
+generalized_condition_number,
+STRidge,
+TrainSTRidge
+)
+
+from feature_library import print_discovered_equation
+
+def prepare_tensors(U, V, X, Y, T):
+    # Convert to torch tensors and enable gradient tracking
+    u = torch.from_numpy(U).float().requires_grad_(True)
+    v = torch.from_numpy(V).float().requires_grad_(True)
+    x = torch.from_numpy(X).float().requires_grad_(True)
+    y = torch.from_numpy(Y).float().requires_grad_(True)
+    t = torch.from_numpy(T).float().requires_grad_(True)
+    return u, v, x, y, t
+
+def collect_candidates_autograd(f_array, f_symbols, dx, dy):
+    candidates = {}
+    for f, f_symbol in zip(f_array, f_symbols):
+        # Original function
+        candidates[f_symbol] = f
+
+        # print(f"Currently computing derivatives for function {f_symbol}")
+        # First derivatives
+        f_x = torch.gradient(f, spacing=[dx], dim=0)[0]
+        f_y = torch.gradient(f, spacing=[dy], dim=1)[0]
+        
+        candidates[f_symbol + '_x'] = f_x
+        candidates[f_symbol + '_y'] = f_y
+        
+        # Second derivatives
+        f_xx = torch.gradient(f_x, spacing=[dx], dim=0)[0]
+        f_yy = torch.gradient(f_y, spacing=[dy], dim=1)[0]
+        f_xy = torch.gradient(f_x, spacing=[dy], dim=1)[0]
+        
+        candidates[f_symbol + '_xx'] = f_xx
+        candidates[f_symbol + '_yy'] = f_yy
+        candidates[f_symbol + '_xy'] = f_xy
+        
+        # Powers
+        candidates[f_symbol + '**4'] = f**4
+        candidates[f_symbol + '**3'] = f**3
+        candidates[f_symbol + '**2'] = f**2
+
+    return candidates
 
 def main(create_gif=False):
     system = 3
@@ -28,82 +76,104 @@ def main(create_gif=False):
     Y = vectorial_data['y']
     T = vectorial_data['t']
 
-    # Shape information
-    print(f"U shape: {U.shape}")
-    print(f"V shape: {V.shape}")
-    nx, ny, snapshots = U.shape
-    print(f"({nx}, {ny}) 2D spatial points, {snapshots} time snapshots in total")
-    print(f"Time array shape: {T.shape}")
+    # Get domain information
+    nx, ny, nt = U.shape
+    t_tot = T[0, -1, -1]
+    dt = 0.05
+    x_end = X.max(); x_start = X.min(); lx = x_end - x_start; dx = lx / nx
+    y_end = Y.max(); y_start = Y.min(); ly = y_end - y_start; dy = ly / ny
 
+    # (256, 256) 2D spatial points, 201 time nt in total
+    print(f"({nx}, {ny}) 2D spatial points, {nt} time nt in total")
+
+    # Convert to tensors
+    u, v, x, y, t = prepare_tensors(U, V, X, Y, T)
 
     #=================================================
     # Computing derivatives
-    #==================================================
-    # # Select different candidate symbols for different systems
-    # if system == 1:
-    #     symbols = generate_candidate_symbols(
-    #         max_x_order=3,     # Up to u_xxx
-    #         max_t_order=0,
-    #         binary_ops=['mul'],
-    #         power_orders=[1],
-    #         allowed_mul_orders=[(0,1), (0,2)],
-    #         exclude_u_t=True
-    #     )
-    # else:
-    #     symbols = generate_candidate_symbols(
-    #         max_x_order=3,     # Up to u_xxx
-    #         max_t_order=0,
-    #         binary_ops=['mul'],
-    #         power_orders=[1],
-    #         allowed_mul_orders=[(0,1), (0,2)],
-    #         exclude_u_t=True
-    #     )
+    #==================================================    
+    candidates = collect_candidates_autograd([u, v], ["u", "v"], dx, dy)
 
-    # derivatives = compute_derivatives_autodiff(model, x_tensor, t_tensor, symbols, 
-    #                            include_constant=True,
-    #                            include_u=True)
+    # Add products up to power of 4 in sum
+    candidates['u*v'] = u * v
 
-    # # Manually filter out some entries
-    # # derivatives.pop('u')
-    # # derivatives.pop('u_t')
-    # derivatives.pop('u_x')
+    candidates['u*v**2'] = u * candidates['v**2']
+    candidates['u**2*v'] = candidates['u**2'] * v
 
-    # print(f"{len(list(derivatives.keys()))} derivatives keys: {list(derivatives.keys())}")
-    # candidates = list(derivatives.keys())
+    candidates['u*v**3'] = u * candidates['v**3']
+    candidates['u**3*v'] = candidates['u**3'] * v
 
+    # Flatten derivatives into shape (nx*ny*nt)x1 column vectors
+    candidates_flat = {symbol: derivative.flatten() for symbol, derivative in candidates.items()}
+    print(f"candidates {list(candidates.keys())}")
 
     #==================================================
     # Assemble LSE
     #==================================================
-    Theta = build_theta(u_tensor, derivatives)
-    u_t   = build_u_t(model, x_tensor, t_tensor)
+
+    D = len(list(candidates.keys()))
+    Theta = torch.zeros((nx*ny*nt, D))
+    print(f"{D} candidates are used, we built Theta matrix of shape {Theta.shape}")
+
+    for j in range(D):
+        symbol, vec = list(candidates_flat.items())[j]
+        Theta[:, j] = vec
+
+    u_t = torch.gradient(u, spacing=[dt], dim=2)[0]
+    v_t = torch.gradient(v, spacing=[dt], dim=2)[0]
 
     c_theta = generalized_condition_number(Theta.cpu().detach().numpy())
     print(f"condition number of Theta is {c_theta}")
+    print(f"shape of u_t is {u_t.shape}")
+
+    # Sample only certain rows of Theta and u_t, v_t
+    torch.manual_seed(0)
+    num_samples = 10000
+    indices = torch.randperm(nx*ny*nt)[:num_samples]
+
+    Theta = Theta[indices]
+    u_t = u_t.flatten()[indices]
+    v_t = v_t.flatten()[indices]
 
     #==================================================
     # Sparse regression for LSE
     #==================================================
-    # TODO: we probably need to solve two LSE here?
-    # # Assembling Theta and u_t
-    # Theta_np = Theta.cpu().detach().numpy()
-    # u_t_np = u_t.cpu().detach().numpy()
+    # Assembling Theta and u_t
+    Theta_np = Theta.cpu().detach().numpy()
+    u_t_np = u_t.cpu().detach().numpy().reshape(-1, 1)
+    v_t_np = v_t.cpu().detach().numpy().reshape(-1, 1)
 
-    # ξ_best = TrainSTRidge(
-    #     Theta_np, u_t_np,
-    #     lam=1e-6,
-    #     d_tol=5e-3,
-    #     maxit=10,
-    #     STR_iters=10,
-    #     l0_penalty=None,
-    #     split=0.7,
-    #     print_best_tol=True
-    # )
-    # print(f"Found coefficients {ξ_best}")
+    print(f"shape of Theta_np is {Theta_np.shape}")
+    print(f"shape of u_t_np is {u_t_np.shape}")
+    print(f"shape of v_t_np is {v_t_np.shape}")
 
-    # # After running ridge regression:
-    # print_discovered_equation(candidates, ξ_best)
+    λ = 1e-6
+    maxiter = 60
+    split = 0.8
+    η = 1e-3
+    d_tol = 5e-3
+    STR_iters = 10
 
+    # Find best coefficients for both equations
+    for rhs, symbol in [(u_t_np, "u_t"), (v_t_np, "v_t")]:
+        ξ_best = TrainSTRidge(
+            Theta_np,
+            rhs,
+            λ=λ,
+            d_tol=d_tol,
+            maxiter=maxiter,
+            STR_iters=STR_iters,
+            η=η,
+            split=split,
+            print_best_tol=False
+        )
+        # After running ridge regression:
+        print_discovered_equation(candidates, ξ_best, f_symbol=symbol)
+
+        # Print error
+        error = np.linalg.norm(rhs - Theta_np @ ξ_best, 2) / np.linalg.norm(rhs, 2)
+
+        print(f"Relative L2 error {error * 100}% ")
 
     # Generate animations for both U and V
     if create_gif:
