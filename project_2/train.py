@@ -1,6 +1,6 @@
 """
 This file contains routines used for approximating the provided dataset.
-- We approximate spatiotemporal solution u(x,t) using neural network
+- We approximate spatiotemporal solution u(x,t) using simple feed forward neural network (FNN)
 - The trained neural networks are stored under `checkpoints/system_X` for system X ∈ {1,2}
 - We can then use automatic differentiation on the trained neural network in order to approximate derivatives
 """
@@ -17,92 +17,106 @@ import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 import matplotlib.pyplot as plt
 
+from datetime import datetime
+from pathlib import Path
 
-class Net(nn.Module):
-    """Simple NN used for approximating spatiotemporal solution u(x, t)"""
-    def __init__(self, width = 64, activation_fun = nn.Tanh()):
-        super(Net, self).__init__()
-        self.width = width
-
-        # Layers
-        self.fc0 = nn.Linear(2, self.width)
-        self.fc1 = nn.Linear(self.width, self.width)
-        self.fc2 = nn.Linear(self.width, 1)
-        self.activation = activation_fun
-        
-    def forward(self, x, t):
-        X = torch.cat([x, t], dim=1)
-        X = self.fc0(X)
-        X = self.activation(X)
-        X = self.fc1(X)
-        X = self.activation(X)
-        X = self.fc2(X)
-        return X
+from fnn import (
+Net,
+get_experiment_name,
+save_config,
+load_model
+)
 
 
-def main(system = 1):
-    # Set device
+def main(system=1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
-    # Specify dataset to load
+    # Set random seeds
+    torch.manual_seed(0)
+    np.random.seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(0)
+
+    # Configure system and create experiment name
     if system == 1:
         path = 'data/1.npz'
-        name = "Burgers' Equation"
-        activation_fun = nn.Tanh()
+        name = "Burgers' Equation" 
 
+        # Model config
+        activation_fun = "Tanh"
         width = 64
-    else:
+
+        # Training config
+        num_epochs = 300
+        batch_size = 64
+        learning_rate = 1e-3
+        weight_decay  = 1e-4
+
+    elif system == 2:
         path = 'data/2.npz'
         name = "KdV Equation"
-        activation_fun = nn.GELU()
+
+        # Model config
+        activation_fun = "GELU"
         width = 64
 
+        # Training config
+        num_epochs = 300
+        # batch_size = 128
+        batch_size = 64
+        learning_rate = 1e-3
+        weight_decay  = 1e-4
+
+    experiment_name = get_experiment_name(width, learning_rate)
+    save_dir = Path(f'checkpoints/system_{system}') / experiment_name
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load and preprocess data
     data = np.load(path)
-    u = data['u']
-    x = data['x']
-    t = data['t']
+    u, x, t = data['u'], data['x'], data['t']
 
     print(f"Shape of u: {u.shape}")
-    print(f"Shape of x: {x.shape}")
+    print(f"Shape of x: {x.shape}") 
     print(f"Shape of t: {t.shape}")
 
-
-    # Data preprocessing
-    # Prepare meshgrid
+    # Create meshgrid if needed
     if x.ndim == 1 and t.ndim == 1:
-        X, T = np.meshgrid(x, t, indexing='ij')  # Shape: (256, 101)
+        X, T = np.meshgrid(x, t, indexing='ij')
     else:
-        X, T = x, t  # Assuming x and t are already meshgridded
+        X, T = x, t
 
-    # Flatten the data
-    X_flat = X.ravel()
-    T_flat = T.ravel()
-    u_flat = u.ravel()
+    # Prepare tensors
+    x_tensor = torch.tensor(X.ravel(), dtype=torch.float32).unsqueeze(1).to(device)
+    t_tensor = torch.tensor(T.ravel(), dtype=torch.float32).unsqueeze(1).to(device)
+    u_tensor = torch.tensor(u.ravel(), dtype=torch.float32).unsqueeze(1).to(device)
 
-    # Convert to PyTorch tensors
-    x_tensor = torch.tensor(X_flat, dtype=torch.float32).unsqueeze(1).to(device)
-    t_tensor = torch.tensor(T_flat, dtype=torch.float32).unsqueeze(1).to(device)
-    u_tensor = torch.tensor(u_flat, dtype=torch.float32).unsqueeze(1).to(device)
-
-    # Create TensorDataset and DataLoader
+    # Create dataloader
     dataset = TensorDataset(x_tensor, t_tensor, u_tensor)
-    batch_size = 1024
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)   
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-
-    # Initialize model, loss function, and optimizer
+    # Initialize model and training
     model = Net(width=width, activation_fun=activation_fun).to(device)
     criterion = nn.MSELoss()
-    # optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    optimizer = torch.optim.AdamW(model.parameters(), 
-                                lr=1e-3,
-                                weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    # Train model
-    num_epochs = 1000
-    print_every = 100
+    # Save full configuration
+    full_config = {
+        'model_config': {
+            'width': width,
+            'activation_fun': activation_fun,
+            'device': str(device)
+        },
+        'training_config': {
+            'learning_rate': learning_rate,
+            'num_epochs': num_epochs,
+            'batch_size': batch_size,
+            'weight_decay': weight_decay
+        }
+    }
+    save_config(full_config, save_dir)
 
+    # Training loop
     for epoch in range(1, num_epochs + 1):
         model.train()
         epoch_loss = 0.0
@@ -116,19 +130,14 @@ def main(system = 1):
         
         epoch_loss /= len(dataloader.dataset)
         
-        if epoch % print_every == 0 or epoch == 1:
+        # Print every epoch
+        if epoch % 1 == 0 or epoch == 1:
             print(f"Epoch {epoch}/{num_epochs}, Loss: {epoch_loss:.8f}")
 
-    # Store trained model that approximate the solution underlying the dataset
-    checkpoint_dir = f'checkpoints/system_{system}'
-    os.makedirs(checkpoint_dir, exist_ok=True)
-
-    # Save the model
-    model_path = os.path.join(checkpoint_dir, 'model.pth')
+    # Save model
+    model_path = save_dir / 'model.pth'
     torch.save(model.state_dict(), model_path)
-
     print(f"Model saved at {model_path}")
-   
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -7,6 +7,7 @@ This file contains routines for testing out the quality of the approximation of 
 import os
 import json
 import argparse
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -16,7 +17,10 @@ import matplotlib.pyplot as plt
 import imageio.v2 as imageio
 import shutil
 
-from train import Net
+from fnn import (
+Net,
+load_model
+)
 
 def main(system=1):
     # Set device
@@ -27,28 +31,22 @@ def main(system=1):
     results_dir = f"results/system_{system}"
     os.makedirs(results_dir, exist_ok=True)
 
-    # Load the saved model
-    model_path = f'checkpoints/system_{system}/model.pth'
-    state_dict = torch.load(model_path, map_location=device, weights_only=True)
+    # Get the latest experiment directory
+    checkpoint_dir = sorted(Path(f'checkpoints/system_{system}').glob('pde_sol_*'), 
+                        key=lambda d: d.stat().st_mtime)
 
-    # Initialize model, loss function, and optimizer
+    # Load the model using utility function
+    model = load_model(checkpoint_dir[-1])
+    print(f"Loading FNN that approximates system {system} from: {checkpoint_dir[-1]}")
+
+    # Load and prepare dataset
     if system == 1:
         path = 'data/1.npz'
         name = "Burgers' Equation"
-        width = 64
-        activation_fun = nn.Tanh()
-    elif system == 2:
+    else:
         path = 'data/2.npz'
         name = "KdV Equation"
-        width = 64
-        activation_fun = nn.GELU()
-        
-    model = Net(width=width, activation_fun=activation_fun).to(device)
-    model.load_state_dict(state_dict)
-    model.to(device)
-    print(f"Model loaded from {model_path}")
 
-    # Evaluation: Preparation of Dataset
     print(f"Testing on dataset loaded from {path}")
     data = np.load(path)
     u = data['u']        
@@ -63,9 +61,6 @@ def main(system=1):
 
     X_min, X_max = X.min(), X.max()
     T_min, T_max = T.min(), T.max()
-
-    # TODO: for 2D data
-    # y_min, y_max = Y.min(), Y.max()
 
     # Flatten the data
     X_flat = X.ravel()
@@ -121,9 +116,8 @@ def main(system=1):
 
     # Optional: Clean up frames directory
     shutil.rmtree(frames_dir)
-
     print(f"GIF saved as '{gif_path}'")
-
+    print(f"Results saved in {results_dir}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
