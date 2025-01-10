@@ -33,7 +33,7 @@ print_discovered_equation,
 compute_derivatives_autodiff
 )
 
-from ffn import (
+from fnn import (
 Net,
 load_model
 )
@@ -53,7 +53,7 @@ def main(system=1):
 
     # Load the model using utility function
     model = load_model(checkpoint_dir[-1])
-    print(f"Loading FFN that approximates system {system} from: {checkpoint_dir[-1]}")
+    print(f"Loading FNN that approximates system {system} from: {checkpoint_dir[-1]}")
 
     # Load and prepare dataset
     if system == 1:
@@ -97,28 +97,29 @@ def main(system=1):
             max_x_order=3,     # Up to u_xxx
             max_t_order=0,
             binary_ops=['mul'],
-            power_orders=[1],
+            power_orders=[1, 2, 3], # base power orders
             allowed_mul_orders=[(0,1), (0,2)],
             exclude_u_t=True
         )
+        derivatives = compute_derivatives_autodiff(model, x_tensor, t_tensor, symbols, 
+                                include_constant=True,
+                                include_u=True)
     else:
         symbols = generate_candidate_symbols(
             max_x_order=3,     # Up to u_xxx
-            max_t_order=0,
+            max_t_order=2,     # Up to u_tt
             binary_ops=['mul'],
             power_orders=[1],
-            allowed_mul_orders=[(0,1), (0,2)],
-            exclude_u_t=True
+            allowed_mul_orders=[(0,1), (0,2), (0,3), (1,1), (2,2), (3,3)],
+            exclude_u_t=False
         )
 
-    derivatives = compute_derivatives_autodiff(model, x_tensor, t_tensor, symbols, 
-                               include_constant=True,
-                               include_u=True)
+        derivatives = compute_derivatives_autodiff(model, x_tensor, t_tensor, symbols, 
+                                include_constant=True,
+                                include_u=True)
 
-    # Manually filter out some entries
-    # derivatives.pop('u')
-    # derivatives.pop('u_t')
-    derivatives.pop('u_x')
+        # Manually filter out some entries
+        derivatives.pop('u_t') # this is already lhs, we want just u_tt and co
 
     print(f"{len(list(derivatives.keys()))} derivatives keys: {list(derivatives.keys())}")
     candidates = list(derivatives.keys())
@@ -139,18 +140,33 @@ def main(system=1):
     Theta_np = Theta.cpu().detach().numpy()
     u_t_np = u_t.cpu().detach().numpy()
 
+    if system == 1:
+        λ = 1e-6
+        maxiter = 50
+        split = 0.5
+        η = 1e-3
+        d_tol = 5e-3
+        STR_iters = 10
+    else:
+        λ = 1e-6
+        maxiter = 50
+        split = 0.7
+        η = 1e-3
+        d_tol = 1e-2
+        STR_iters = 10
+
+    # Find best coefficients
     ξ_best = TrainSTRidge(
-        Theta_np, u_t_np,
-        lam=1e-6,
-        d_tol=5e-3,
-        maxit=10,
-        STR_iters=10,
-        l0_penalty=None,
-        split=0.7,
+        Theta_np,
+        u_t_np,
+        λ=λ,
+        d_tol=d_tol,
+        maxiter=maxiter,
+        STR_iters=STR_iters,
+        η=η,
+        split=split,
         print_best_tol=True
     )
-    print(f"Found coefficients {ξ_best}")
-
     # After running ridge regression:
     print_discovered_equation(candidates, ξ_best)
 

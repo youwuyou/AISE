@@ -5,17 +5,46 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 ## Getting Started
 
 
-For system 1 & 2:
+### For system 1:
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 1
 python3 evaluate.py --system=1
+```
 
+running the PDE-Find algorithm based on 31 candidates
+
+```
+31 derivatives keys: ['1', 'u', 'u**2', 'u**2*u_x', 'u**2*u_x**2', 'u**2*u_x**3', 'u**2*u_xx', 'u**2*u_xx**2', 'u**2*u_xx**3', 'u**3', 'u**3*u_x', 'u**3*u_x**2', 'u**3*u_x**3', 'u**3*u_xx', 'u**3*u_xx**2', 'u**3*u_xx**3', 'u*u_x', 'u*u_x**2', 'u*u_x**3', 'u*u_xx', 'u*u_xx**2', 'u*u_xx**3', 'u_x', 'u_x**2', 'u_x**3', 'u_xx', 'u_xx**2', 'u_xx**3', 'u_xxx', 'u_xxx**2', 'u_xxx**3']
+```
+
+we found the following equation for system 1:
+
+$$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140*u_\mathbf{x x} $$
+
+
+### For system 2
+For the second PDE solutions given by the dataset `2.npz`, the same `evaluate.py` script is used, because we have again 1D solutions for one specific PDE:
+
+```bash
 # Similarly for system 2
 python3 evaluate.py --system=2
 ```
+with 13 candidate terms,
 
-For system 3, we have a coupled system on 2D data. To evaluate it, run:
+```bash
+13 derivatives keys: ['1', 'u', 'u*u_t', 'u*u_tt', 'u*u_x', 'u*u_xx', 'u*u_xxx', 'u_t*u_x', 'u_tt', 'u_tt*u_xx', 'u_x', 'u_xx', 'u_xxx']
+```
+
+we found the following equation for system 2:
+
+$$
+u_\mathbf{t} = -5.964103 \cdot u u_\mathbf{x} -0.987782 \cdot u_\mathbf{xxx}
+$$
+
+### For system 3
+
+Now, we have a coupled system on 2D data and we use another script `evalute_2d.py`. To evaluate it, run:
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 3
