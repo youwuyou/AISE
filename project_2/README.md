@@ -6,7 +6,7 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 In our project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
-However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform automatic differentiation directly on the dataset.
+However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform second-order accurate central differences method and a first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.
 
 ### For system 1 (FNN + automatic differentiation):
 
@@ -57,7 +57,7 @@ Relative L2 error 4.338796615600586%
 ```
 
 
-### For system 3 (Direct automatic differentiation)
+### For system 3 (Direct `torch.gradient`)
 
 To apply the PDE-Find method on the third coupled PDE system, we use another script `evalute_2d.py`. To evaluate it, run:
 
@@ -134,7 +134,7 @@ We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse c
 
 ## 2D Implementation
 
-On this dataset, we did not train a FNN, but performed the automatic differentiation directly as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
+On this dataset, we did not train a FNN, but performed the `torch.gradient` directly on the dataset as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
 
 By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
 

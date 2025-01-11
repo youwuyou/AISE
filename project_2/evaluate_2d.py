@@ -27,7 +27,7 @@ def prepare_tensors(U, V, X, Y, T):
     t = torch.from_numpy(T).float().requires_grad_(True)
     return u, v, x, y, t
 
-def collect_candidates_autograd(f_array, f_symbols, dx, dy):
+def collect_candidates_torch_grad(f_array, f_symbols, dx, dy):
     candidates = {}
     for f, f_symbol in zip(f_array, f_symbols):
         # Original function
@@ -92,7 +92,7 @@ def main(create_gif=False):
     #=================================================
     # Computing derivatives
     #==================================================    
-    candidates = collect_candidates_autograd([u, v], ["u", "v"], dx, dy)
+    candidates = collect_candidates_torch_grad([u, v], ["u", "v"], dx, dy)
 
     # Add products up to power of 4 in sum
     candidates['u*v'] = u * v
