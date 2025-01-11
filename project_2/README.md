@@ -78,7 +78,7 @@ python3 evaluate.py --system=1
 running the PDE-Find algorithm based on 31 candidates
 
 ```
-31 derivatives keys: ['1', 'u', 'u**2', 'u**2*u_x', 'u**2*u_x**2', 'u**2*u_x**3', 'u**2*u_xx', 'u**2*u_xx**2', 'u**2*u_xx**3', 'u**3', 'u**3*u_x', 'u**3*u_x**2', 'u**3*u_x**3', 'u**3*u_xx', 'u**3*u_xx**2', 'u**3*u_xx**3', 'u*u_x', 'u*u_x**2', 'u*u_x**3', 'u*u_xx', 'u*u_xx**2', 'u*u_xx**3', 'u_x', 'u_x**2', 'u_x**3', 'u_xx', 'u_xx**2', 'u_xx**3', 'u_xxx', 'u_xxx**2', 'u_xxx**3']
+31 candidates: ['1', 'u', 'u**2', 'u**2*u_x', 'u**2*u_x**2', 'u**2*u_x**3', 'u**2*u_xx', 'u**2*u_xx**2', 'u**2*u_xx**3', 'u**3', 'u**3*u_x', 'u**3*u_x**2', 'u**3*u_x**3', 'u**3*u_xx', 'u**3*u_xx**2', 'u**3*u_xx**3', 'u*u_x', 'u*u_x**2', 'u*u_x**3', 'u*u_xx', 'u*u_xx**2', 'u*u_xx**3', 'u_x', 'u_x**2', 'u_x**3', 'u_xx', 'u_xx**2', 'u_xx**3', 'u_xxx', 'u_xxx**2', 'u_xxx**3']
 ```
 
 we found the following equation for system 1:
@@ -99,7 +99,7 @@ python3 evaluate.py --system=2
 with 13 candidate terms,
 
 ```bash
-13 derivatives keys: ['1', 'u', 'u*u_t', 'u*u_tt', 'u*u_x', 'u*u_xx', 'u*u_xxx', 'u_t*u_x', 'u_tt', 'u_tt*u_xx', 'u_x', 'u_xx', 'u_xxx']
+13 candidates: ['1', 'u', 'u*u_t', 'u*u_tt', 'u*u_x', 'u*u_xx', 'u*u_xxx', 'u_t*u_x', 'u_tt', 'u_tt*u_xx', 'u_x', 'u_xx', 'u_xxx']
 ```
 
 we found the following equation for system 2:

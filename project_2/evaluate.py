@@ -121,7 +121,7 @@ def main(system=1):
         # Manually filter out some entries
         derivatives.pop('u_t') # this is already lhs, we want just u_tt and co
 
-    print(f"{len(list(derivatives.keys()))} derivatives keys: {list(derivatives.keys())}")
+    print(f"{len(list(derivatives.keys()))} candidates: {list(derivatives.keys())}")
     candidates = list(derivatives.keys())
 
     #==================================================
