@@ -24,7 +24,7 @@ Before we can use the trained NN to approximate our solution, we can compare it 
 python3 test.py --system=1
 ```
 
-This file will generate the a heat map of the approximated solution, as well as a gif showing the spatial-temporal evolution of the system. As we can see our approximation is of good quality, we can be reassured to further use the NN to compute derivatives.
+This file will generate the a heat map of the approximated solution, as well as a gif showing the spatial-temporal evolution of the system. As we can see our approximation is of good quality, we can be reassured to further use the NN to compute derivatives. We also could visually already identify the first system to emerge from Burgers' equation, and the second system to be the Korteweg–De Vries equation (KdV equation) just from the animation and combined with the supplementary materials from the original paper [^1]. These assumptions will later be confirmed in our "Results" section too.
 
 
 | System | Approximate Solution Heatmap | Solution Comparison |
@@ -58,12 +58,11 @@ For applying PDE-Find on 2D datasets, we did not train a FNN, but performed the 
 
 For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
 
-By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
+By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations. Based on the animations and the original paper [^1], we assume the system of PDEs to be the reaction-diffusion system:
 
 | System | Original Solution $u$ | Original Velocity $v$ |
 | --- | --- | --- |
 | System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
-
 
 ## Results
 
