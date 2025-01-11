@@ -61,7 +61,11 @@ def allen_cahn_rhs(t, u, epsilon, x_grid):
     dx = x_grid[1] - x_grid[0]
     
     # TODO: Compute Laplacian (Δu) with periodic boundary conditions
+
+
     # TODO: Compute nonlinear term -(1/ε²)(u³ - u)
+    nonlinear_term = -(1.0 / epsilon**2) * (u**3 - u)
+
     # TODO: Return full RHS
     pass
 
