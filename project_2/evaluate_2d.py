@@ -30,6 +30,7 @@ def prepare_tensors(U, V, X, Y, T):
 def collect_candidates_torch_grad(f_array, f_symbols, dx, dy):
     candidates = {}
     for f, f_symbol in zip(f_array, f_symbols):
+
         # Original function
         candidates[f_symbol] = f
 

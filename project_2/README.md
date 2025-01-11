@@ -4,7 +4,7 @@ This project aims to use the PDE-Find method [^1] for symbolic regression of the
 
 ## Getting Started
 
-In our project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
+In project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
 However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform second-order accurate central differences method and a first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.
 
