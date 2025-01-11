@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 def generate_fourier_ic(x, n_modes=5, seed=None):
-    """TODO: Generate random Fourier series initial condition.
+    """Generate random Fourier series initial condition.
     Hints:
     1. Use random coefficients for sin and cos terms
     2. Ensure the result is normalized to [-1, 1]
@@ -19,7 +19,7 @@ def generate_fourier_ic(x, n_modes=5, seed=None):
     pass
 
 def generate_gmm_ic(x, n_components=None, seed=None):
-    """TODO: Generate Gaussian mixture model initial condition.
+    """Generate Gaussian mixture model initial condition.
     Hints:
     1. Random number of components if n_components is None
     2. Use random means, variances, and weights
@@ -37,7 +37,7 @@ def generate_gmm_ic(x, n_components=None, seed=None):
     pass
 
 def generate_piecewise_ic(x, n_pieces=None, seed=None):
-    """TODO: Generate piecewise linear initial condition.
+    """Generate piecewise linear initial condition.
     Hints:
     1. Generate random breakpoints
     2. Create piecewise linear function
@@ -55,7 +55,7 @@ def generate_piecewise_ic(x, n_pieces=None, seed=None):
     pass
 
 def allen_cahn_rhs(t, u, epsilon, x_grid):
-    """TODO: Implement Allen-Cahn equation RHS:
+    """Implement Allen-Cahn equation RHS:
         ∂u/∂t = Δu - (1/ε²)(u³ - u)
     """
     dx = x_grid[1] - x_grid[0]
@@ -69,7 +69,7 @@ def allen_cahn_rhs(t, u, epsilon, x_grid):
     # TODO: Return full RHS
     pass
 
-def generate_dataset(n_samples, epsilon, x_grid, t_eval, ic_type='fourier', seed=None):
+def generate_dataset(n_samples, epsilon: float, x_grid, t_eval, ic_type='fourier', seed=None):
     """Generate dataset for Allen-Cahn equation."""
     if seed is not None:
         np.random.seed(seed)
@@ -109,19 +109,29 @@ def main():
     """Generate all datasets."""
     # Set up spatial grid
     nx = 128
-    x_grid = np.linspace(-1, 1, nx)
-    
+    x_grid = np.linspace(-1, 1, nx) # (128, )
+
     # Set up temporal grid
-    t_eval = np.array([0.0, 0.25, 0.50, 0.75, 1.0])
+    t_eval = np.array([0.0, 0.25, 0.50, 0.75, 1.0]) # (5, )
     
     # Parameters for datasets
     epsilons = [0.1, 0.05, 0.02]  # Different epsilon values
     n_train = 1000  # Number of training samples per configuration
     n_test = 200    # Number of test samples
     base_seed = 42  # For reproducibility
-    
+
+    # Create data directory for storing the generated datasets
+    data_dir = f"results/system_{system}"
+    os.makedirs(data_dir, exist_ok=True)
+
     # TODO: Generate training datasets for each epsilon and IC type
+    # IC type 'fourier' 'gmm' 'piecewise'
+
+    # dataset = generate_dataset(n_train, epsilon, x_grid, t_eval, ic_type='fourier', seed=None)
+
     # TODO: Generate standard test dataset
+    # dataset = generate_dataset(n_test, epsilon, x_grid, t_eval, ic_type='fourier', seed=None)
+
     # TODO: Generate OOD test datasets (high frequency, sharp transitions)
     # TODO: Save all datasets using np.save
     pass
