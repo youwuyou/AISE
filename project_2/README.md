@@ -52,8 +52,23 @@ We provide concise utility functions `build_theta` and `build_u_t` for assemblin
 
 We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$. In addition, we also implemented the algorithm 2 `TrainSTRidge` as in the original paper for automatic selecting the best parameters based on customizable split on the dataset, this function wraps around the `STRidge` and is called instead.
 
+## 2D Implementation (Direct `torch.gradient`)
 
-### System 1
+For applying PDE-Find on 2D datasets, we did not train a FNN, but performed the `torch.gradient` directly on the dataset as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
+
+For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
+
+By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
+
+| System | Original Solution $u$ | Original Velocity $v$ |
+| --- | --- | --- |
+| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
+
+
+## Results
+
+
+### System 1 (FNN + automatic differentiation)
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 1
@@ -73,7 +88,7 @@ $$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140 \cdot u_\mathbf{x x} $$
 With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE and got the relative L2 error is at around 3.30%.
 
 
-### System 2
+### System 2 (FNN + automatic differentiation)
 
 For the second PDE solutions given by the dataset `2.npz`, the same `evaluate.py` script is used, because we have again 1D solutions for one specific PDE:
 
@@ -95,13 +110,7 @@ $$
 
 With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE, which is around 4.34%.
 
-## 2D Implementation (Direct `torch.gradient`)
-
-For applying PDE-Find on 2D datasets, we did not train a FNN, but performed the `torch.gradient` directly on the dataset as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
-
-For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
-
-### System 3
+### System 3 (Direct `torch.gradient`)
 
 To run the PDE-Find on the system 3:
 
@@ -127,14 +136,6 @@ v_\mathbf{t} = -0.987519 \cdot u^3 + 1.175099 \cdot v + 0.106914 \cdot v_{\mathb
 $$
 
 each with an relative L2 error of $11.80157470703125$% and $12.238569259643555$% respectively.
-
-
-By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
-
-| System | Original Solution $u$ | Original Velocity $v$ |
-| --- | --- | --- |
-| System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
-
 
 
 [^1]: **Data-driven discovery of partial differential equations**
