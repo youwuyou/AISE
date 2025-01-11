@@ -8,7 +8,52 @@ In project 2, we initially wanted to train simple feedforward neural networks (F
 
 However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform second-order accurate central differences method with first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.
 
-### For system 1 (FNN + automatic differentiation):
+## 1D Implementation (FNN + automatic differentiation)
+
+For affordable 1D datasets, we trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2\}$ for $2$ different PDE systems) with:
+
+```python
+# Train NN to approximate u(x,t) of the system 1 or 2
+python3 train.py --system=1
+```
+
+Before we can use the trained NN to approximate our solution, we can compare it against the ground truth using the provided dataset:
+
+```python
+# Test out the NN and compare it against the dataset ground truth for system 1 or 2
+python3 test.py --system=1
+```
+
+This file will generate the a heat map of the approximated solution, as well as a gif showing the spatial-temporal evolution of the system. As we can see our approximation is of good quality, we can be reassured to further use the NN to compute derivatives.
+
+
+| System | Approximate Solution Heatmap | Solution Comparison |
+| --- | --- | --- |
+| System 1 | ![Approximate Solution Heatmap](results/system_1/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_1/solution_comparison.gif) |
+| System 2 | ![Approximate Solution Heatmap](results/system_2/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_2/solution_comparison.gif) |
+
+### Selecting Candidates
+
+In order to be able to flexibly generate candidate derivatives and specify eligible binary operations to be performed, we use [SymPy](https://www.sympy.org/en/index.html) to generate the candidate symbols automatically.
+
+The symbols can be passed to different actual compute kernels that compute the specified derivatives. In our implementation, we provide these derivatives via automatic differentiation on the trained neural networks that approximate our solution data.
+
+### Automatic Differentiation
+
+We opted to use the neural network-based approach for computing derivatives. The main motivation of this is because we want to leverage the power of automatic differentiation.
+
+### Building the Feature Library
+
+The feature library can now be built very easily because the results from automatic differentiation are already column vectors in our target shape. The only thing we need to do now is to assign these values column-wise to the $\Theta$ matrix.
+
+We provide concise utility functions `build_theta` and `build_u_t` for assembling the sparse LSE that can be directly used in the upcoming regression. The implementation of the algorithm can be found under [`optimizers.py`](https://github.com/youwuyou/AISE/blob/main/project_2/optimizers.py)
+
+### Sparse Linear Regression for Solving the LSE
+
+We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$. In addition, we also implemented the algorithm 2 `TrainSTRidge` as in the original paper for automatic selecting the best parameters based on customizable split on the dataset, this function wraps around the `STRidge` and is called instead.
+
+
+### System 1
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 1
@@ -25,13 +70,11 @@ we found the following equation for system 1:
 
 $$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140 \cdot u_\mathbf{x x} $$
 
-With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE:
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE and got the relative L2 error is at around 3.30%.
 
-```bash
-Relative L2 error 3.2963931560516357%
-```
 
-### For system 2 (FNN + automatic differentiation)
+### System 2
+
 For the second PDE solutions given by the dataset `2.npz`, the same `evaluate.py` script is used, because we have again 1D solutions for one specific PDE:
 
 ```bash
@@ -50,16 +93,17 @@ $$
 u_\mathbf{t} = -5.964103 \cdot u u_\mathbf{x} -0.987782 \cdot u_\mathbf{xxx}
 $$
 
-With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE:
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE, which is around 4.34%.
 
-```bash
-Relative L2 error 4.338796615600586% 
-```
+## 2D Implementation (Direct `torch.gradient`)
 
+For applying PDE-Find on 2D datasets, we did not train a FNN, but performed the `torch.gradient` directly on the dataset as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
 
-### For system 3 (Direct `torch.gradient`)
+For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
 
-To apply the PDE-Find method on the third coupled PDE system, we use another script `evalute_2d.py`. To evaluate it, run:
+### System 3
+
+To run the PDE-Find on the system 3:
 
 ```python
 # Run PDE-Find and obtain symbols of governing equation for system 3
@@ -85,65 +129,12 @@ $$
 each with an relative L2 error of $11.80157470703125$% and $12.238569259643555$% respectively.
 
 
-
-## 1D Implementation
-
-As we said before, for affordable 1D datasets, we trained simple neural networks to approximate spatiotemporal solutions of the PDE, solely based on the provided `X.npz` dataset (for $X \in \{1,2\}$ for $2$ different PDE systems) with:
-
-```python
-# Train NN to approximate u(x,t) of the system 2
-python3 train.py --system=2
-```
-
-Before we can use the trained NN to approximate our solution, we can compare it against the ground truth using the provided dataset:
-
-```python
-# Test out the NN and compare it against the dataset ground truth
-python3 test.py --system=2
-```
-
-This file will generate the a heat map of the approximated solution, as well as a gif showing the spatial-temporal evolution of the system. As we can see our approximation is of good quality, we can be reassured to further use the NN to compute derivatives.
-
-
-| System | Approximate Solution Heatmap | Solution Comparison |
-| --- | --- | --- |
-| System 1 | ![Approximate Solution Heatmap](results/system_1/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_1/solution_comparison.gif) |
-| System 2 | ![Approximate Solution Heatmap](results/system_2/approximate_sol_heatmap.png) | ![Solution Comparison](results/system_2/solution_comparison.gif) |
-
-
-### Selecting Candidates
-
-In order to be able to flexibly generate candidate derivatives and specify eligible binary operations to be performed, we use [SymPy](https://www.sympy.org/en/index.html) to generate the candidate symbols automatically.
-
-The symbols can be passed to different actual compute kernels that compute the specified derivatives. In our implementation, we provide these derivatives via automatic differentiation on the trained neural networks that approximate our solution data.
-
-### Automatic Differentiation
-
-We opted to use the neural network-based approach for computing derivatives. The main motivation of this is because we want to leverage the power of automatic differentiation.
-
-### Building the Feature Library
-
-The feature library can now be built very easily because the results from automatic differentiation are already column vectors in our target shape. The only thing we need to do now is to assign these values column-wise to the $\Theta$ matrix.
-
-We provide concise utility functions `build_theta` and `build_u_t` for assembling the sparse LSE that can be directly used in the upcoming regression. The implementation of the algorithm can be found under [`optimizers.py`](https://github.com/youwuyou/AISE/blob/main/project_2/optimizers.py)
-
-### Sparse Linear Regression for Solving the LSE
-
-We used `STRidge` algorithm as in the PDE-Find paper [^1] for obtaining sparse coefficient solution vector $\xi$. In addition, we also implemented the algorithm 2 `TrainSTRidge` as in the original paper for automatic selecting the best parameters based on customizable split on the dataset, this function wraps around the `STRidge` and is called instead.
-
-
-## 2D Implementation
-
-On this dataset, we did not train a FNN, but performed the `torch.gradient` directly on the dataset as we stated earlier. For simplicity, we place the utility functions for building the feature library for the 2D data directly within the `evaluate_2d.py` script.
-
 By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` script, one can visualize the underlying solution $u$ and $v$ from the **original dataset** (`3.npz`) as animations:
 
 | System | Original Solution $u$ | Original Velocity $v$ |
 | --- | --- | --- |
 | System 3 | ![Solution u Heatmap](results/system_3/original_data_u.gif) | ![Solution v Heapmap](results/system_3/original_data_v.gif) |
 
-
-For solving the LSE with sparse regression, we reused previous routines. The identical `TrainSTRidge` algorithm as for previous systems is used but with slightly different parameters. One can find the original parameters we used for the final report also in the script.
 
 
 [^1]: **Data-driven discovery of partial differential equations**
