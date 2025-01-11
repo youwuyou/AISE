@@ -66,6 +66,7 @@ By passing `create_gif = True` to the `main` function of the `evaluate_2d.py` sc
 
 ## Results
 
+Our results on all three systems are plausible and match our expectations on the guess of the systems as in previous section. The systems are governed by Burger's equation, KdV equation and reaction-diffusion equation respectively.
 
 ### System 1 (FNN + automatic differentiation)
 
