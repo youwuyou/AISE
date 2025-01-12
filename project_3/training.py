@@ -119,36 +119,51 @@ def main():
     ]
 
     # Load the latest created dataset
-    ic_types = ['fourier', 'gmm', 'piecewise']
-    print(f"Training model with {len(ic_types)} IC types")
-    for ic_type in ic_types:
-        data_folders = sorted(Path(f'data/{ic_type}').glob('dt_*'), key=lambda d: d.stat().st_mtime)
-        data_folder  = data_folders[-1]
-        print(f"Loading dataset from {data_folder}")
+    data_folders = sorted(Path(f'data').glob('dt_*'), key=lambda d: d.stat().st_mtime)
+    data_folder  = data_folders[-1]
+    print(f"Loading dataset from {data_folder}")
 
-        with open(f'{data_folder}/config.json', 'r') as f:
-            config = json.load(f)
-    
-        # Extract parameters from config        
-        time_points = np.array(config['temporal_grid']['time_points'])
-        epsilon_values = config['dataset_params']['epsilon_values']
+    with open(f'{data_folder}/config.json', 'r') as f:
+        config = json.load(f)
 
-        # Fetch data dictionary
-        train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()
-        test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
+    # Extract parameters from config        
+    time_points = np.array(config['temporal_grid']['time_points'])
+    epsilon_values = config['dataset_params']['epsilon_values']
 
-        # Initialize data dictionary
-        print(f"Training dataset with epsilon values {train_data_dict.keys()}")
-        print(f"Testing dataset with epsilon values {test_data_dict.keys()}")
+    # Fetch data dictionary
+    train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()
+    # test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
 
-        # TODO: use train_model here, but move AllenCahnDataset out!
-        train_dataset = AllenCahnDataset(train_data_dict, epsilon_values, time_points)
-        test_dataset = AllenCahnDataset(test_data_dict, epsilon_values, time_points)
+    # Initialize data dictionary
+    print(f"Training dataset with epsilon values {train_data_dict.keys()}")
+    # print(f"Testing dataset with epsilon values {test_data_dict.keys()}")
+
+    for i, (sampler_name, samples) in enumerate(train_data_dict.items()):
+        print(f"current initial condition {sampler_name}")
+        print(f"trajectories shape {samples.keys()}")
+
+        for eps in samples.keys():
+            print(f"current eps {eps}")
+
+            trajectories = train_data_dict[sampler_name][eps]
+            print(f"trajectories shape {trajectories.shape}")
+
+        # of shape (3, 5, 128)
+        print(f"{train_data_dict['PL'].keys()}")
+
+        print(f"IC PL at epsilon {0.1}: {train_data_dict['PL'][0.1].shape}")
+
+        # for eps in epsilon_values:
+        #     print(f"current ")
+
+        # # TODO: use train_model here, but move AllenCahnDataset out!
+        # train_dataset = AllenCahnDataset(train_data_dict, epsilon_values, time_points)
+        # test_dataset = AllenCahnDataset(test_data_dict, epsilon_values, time_points)
 
         # Reporting some information
         n_train = config['dataset_params']['n_train']
         n_test = config['dataset_params']['n_test']
-        dt = config['temporal_grid']['dt']        
+        dt = config['temporal_grid']['dt']
         nx = config['spatial_grid']['nx']
         x_grid = np.array(config['spatial_grid']['x_grid'])
 
