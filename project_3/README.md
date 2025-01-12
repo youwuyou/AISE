@@ -1,13 +1,14 @@
 # Project 3: Foundation Models for Phase-Field Dynamics
 
-In this project, we consider the 1D Allen-Cahn equation:
+In this project, we aim to train and evaluate a foundation model [^1]. Our implementation is based on the Fourier Neural Operator (FNO) [^2] as its architectural backbone.
+
+Within the scope of our project, we consider the 1D Allen-Cahn equation:
 
 $$
 \frac{\partial u}{\partial t} = \Delta_{x} u - \frac{1}{\epsilon^{2}} (u^{3} - u), x\in [-1,1]
 $$
 
 with varying $\epsilon$ values.
-
 
 ## Getting Started
 
@@ -35,7 +36,9 @@ In the following table, one can see for each dataset 5 selected samples at initi
 | --- | --- | --- |
 | ![training](data/dt_0.005_20250112_192434/sample_comparison_train.png)   | ![testing](data/dt_0.005_20250112_192434/sample_comparison_test.png)     | ![ood testing](data/dt_0.005_20250112_192434/sample_comparison_ood.png)     |
 
-### Solution Trajectories Across Timestamps
+### Solution Trajectories Across 5 Timestamps
+
+In total, a fixed number of timestamps `nt = 5` are used. The temporal grid is discretized uniformly, and thus all timesteps are of size $\Delta t = 0.005$.
 
 ![In-distribution Evolution](data/dt_0.005_20250112_192434/sol_dt_0.005_train.gif)
 *Evolution of Selected trajectories at different ɛ from `train_sol.npy` (In-distribution)*
@@ -48,3 +51,15 @@ In the following table, one can see for each dataset 5 selected samples at initi
 
 
 ### Testing
+
+
+[^1]: **Towards Foundation Models for Scientific Machine Learning: Characterizing Scaling and Transfer Behavior**
+    S. Subramanian et al.
+    *Advances in Neural Information Processing Systems, vol. 36, 2023*
+    [[paper]](https://arxiv.org/abs/2306.00258v1)
+
+[^2]: **Fourier Neural Operator for Parametric Partial Differential Equations**  
+    Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, A. Anandkumar  
+    *International Conference on Learning Representations (ICLR)*  
+    [[paper]](https://arxiv.org/abs/2010.08895)
+    [[blog]](https://zongyi-li.github.io/blog/2020/fourier-pde/)
