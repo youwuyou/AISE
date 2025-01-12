@@ -44,7 +44,7 @@ class DomainConfig:
 
     # Temporal domain
     nt: int   = 5
-    dt: float = 0.25
+    dt: float = 0.005
  
     @property
     def dx(self) -> float:
@@ -399,13 +399,67 @@ class DatasetGenerator:
         plt.tight_layout()
         return fig, anim
 
-def generate(domain: DomainConfig, epsilon_values: list):
-    # Setup parameters
-    base_seed = 1  # For reproducibility
-    n_train = 1000  # Number of training samples per configuration
-    n_test = 200    # Number of test samples
 
+def plot(domain: DomainConfig, n_samples: int = 5):
+    # Load the latest created dataset
+    data_folders = sorted(Path(f'data').glob('dt_*'), key=lambda d: d.stat().st_mtime)
+    data_folder  = data_folders[-1]
+    print_bold(f"Loading dataset from {data_folder}")
+
+    with open(f'{data_folder}/config.json', 'r') as f:
+        config = json.load(f)
+
+    # Extract parameters from config
+    time_points = np.array(config['temporal_grid']['time_points'])
+    epsilon_values = config['dataset_params']['epsilon_values']
+    generator = DatasetGenerator(domain, epsilon_values)
+
+    # Plot training samples
+    print_bold(f"Plotting {n_samples} training samples")
+    train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()
+    fig = generator.plot_samples(train_data_dict, n_samples=n_samples)
+    plt.savefig(f"{data_folder}/sample_comparison_train")
+    plt.close()
+
+    fig, anim = generator.plot_sample_animation(train_data_dict)
+    anim.save(f'{data_folder}/sol_dt_{domain.dt}_train.gif', writer='pillow')
+    plt.close()
+
+    # Plot testing samples
+    print_bold(f"Plotting {n_samples} testing samples")
+    test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
+    fig = generator.plot_samples(test_data_dict, n_samples=n_samples)
+    plt.savefig(f"{data_folder}/sample_comparison_test")
+    plt.close()
+
+    fig, anim = generator.plot_sample_animation(test_data_dict)
+    anim.save(f'{data_folder}/sol_dt_{domain.dt}_test.gif', writer='pillow')
+    plt.close()
+
+    # Plot OOD testing samples
+    print_bold(f"Plotting {n_samples} OOD testing samples")
+    ood_test_data_dict = np.load(f"{data_folder}/test_sol_OOD.npy", allow_pickle=True).item()
+    fig = generator.plot_samples(ood_test_data_dict, n_samples=n_samples)
+    plt.savefig(f"{data_folder}/sample_comparison_ood")
+    plt.close()
+
+    fig, anim = generator.plot_sample_animation(ood_test_data_dict)
+    anim.save(f'{data_folder}/sol_dt_{domain.dt}_test_ood.gif', writer='pillow')
+    plt.close()
+
+
+def generate(domain: DomainConfig, 
+            epsilon_values: list,
+            base_seed = 1,
+            n_train: int = 1000,
+            n_test: int = 200,
+            n_pieces: int = 6,
+            n_components: int = 10,
+            n_modes: int = 20
+            ):
+    #==================================================
     # Choose initial conditions
+    #==================================================
     samplers = {
     'PL': PiecewiseLinearSampler(),
     'GM': GaussianMixtureSampler(),
@@ -413,9 +467,9 @@ def generate(domain: DomainConfig, epsilon_values: list):
     }
 
     ood_samplers = {
-    'PL': PiecewiseLinearSampler(n_pieces = 6),
-    'GM': GaussianMixtureSampler(n_components = 10),
-    'FS': FourierSeriesSampler(n_modes = 20)
+    'PL': PiecewiseLinearSampler(n_pieces = n_pieces),
+    'GM': GaussianMixtureSampler(n_components = n_components),
+    'FS': FourierSeriesSampler(n_modes = n_modes)
     }
 
     # Create a configuration dictionary
@@ -448,16 +502,17 @@ def generate(domain: DomainConfig, epsilon_values: list):
             'base_seed': base_seed
         }
     }
-
-    # Create generator
-    generator     = DatasetGenerator(domain, epsilon_values, samplers)
-    ood_generator = DatasetGenerator(domain, epsilon_values, ood_samplers)
-    
-    # Generate dataset
     data_dir = f"data/{get_dataset_folder_name(domain.dt)}"
     os.makedirs(data_dir, exist_ok=True)
     with open(f"{data_dir}/config.json", 'w') as f:
         json.dump(config, f, indent=4)
+    
+    #==================================================
+    # Generate dataset
+    #==================================================
+    # Create generator
+    generator     = DatasetGenerator(domain, epsilon_values, samplers)
+    ood_generator = DatasetGenerator(domain, epsilon_values, ood_samplers)
 
     # Generate training & test datasets for each epsilon and IC type
     print_bold(f"Generating Training dataset with {n_train} samples")
@@ -472,55 +527,6 @@ def generate(domain: DomainConfig, epsilon_values: list):
     print_bold(f"Generating OOD Testing dataset with {n_test} samples")
     ood_test_dataset = ood_generator.generate_dataset(n_samples=n_test, base_seed=base_seed+n_train+n_test)
     np.save(f"{data_dir}/test_sol_OOD.npy", ood_test_dataset)
-
-
-def plot(domain: DomainConfig):
-    # Load the latest created dataset
-    data_folders = sorted(Path(f'data').glob('dt_*'), key=lambda d: d.stat().st_mtime)
-    data_folder  = data_folders[-1]
-    print_bold(f"Loading dataset from {data_folder}")
-
-    with open(f'{data_folder}/config.json', 'r') as f:
-        config = json.load(f)
-
-    # Extract parameters from config
-    time_points = np.array(config['temporal_grid']['time_points'])
-    epsilon_values = config['dataset_params']['epsilon_values']
-    generator = DatasetGenerator(domain, epsilon_values)
-
-    # Plot training samples
-    n_samples = 5
-    print_bold(f"Plotting {n_samples} training samples")
-    train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()
-    fig = generator.plot_samples(train_data_dict, n_samples=n_samples)
-    plt.savefig(f"{data_folder}/sample_comparison_train")
-    plt.close()
-
-    fig, anim = generator.plot_sample_animation(train_data_dict)
-    anim.save(f'{data_folder}/sol_dt_{domain.dt}_train.gif', writer='pillow')
-    plt.close()
-
-    # Plot testing samples
-    print_bold(f"Plotting {n_samples} testing samples")
-    test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
-    fig = generator.plot_samples(test_data_dict, n_samples=n_samples)
-    plt.savefig(f"{data_folder}/sample_comparison_test")
-    plt.close()
-
-    fig, anim = generator.plot_sample_animation(test_data_dict)
-    anim.save(f'{data_folder}/sol_dt_{domain.dt}_test.gif', writer='pillow')
-    plt.close()
-
-    # Plot OOD testing samples
-    print_bold(f"Plotting {n_samples} OOD testing samples")
-    ood_test_data_dict = np.load(f"{data_folder}/test_sol_OOD.npy", allow_pickle=True).item()
-    fig = generator.plot_samples(ood_test_data_dict, n_samples=n_samples)
-    plt.savefig(f"{data_folder}/sample_comparison_ood")
-    plt.close()
-
-    fig, anim = generator.plot_sample_animation(ood_test_data_dict)
-    anim.save(f'{data_folder}/sol_dt_{domain.dt}_test_ood.gif', writer='pillow')
-    plt.close()
 
 
 if __name__ == '__main__':
