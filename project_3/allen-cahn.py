@@ -1,4 +1,6 @@
 """
+This module generates all datasets used in the training of the "Foundation Model for Phase-Field Dynamics" project
+
 Code reference and inspirations taken from:
 
 - Fourier
@@ -18,6 +20,11 @@ import os
 import torch.nn as nn
 
 import matplotlib.pyplot as plt
+
+from utils import (
+    get_dataset_folder_name
+)
+import json
 
 def enforce_normalization(f):
     """Enforce normalization to domain [-1, 1]"""
@@ -146,13 +153,13 @@ def allen_cahn_rhs(t, u, epsilon, x_grid):
     # Return full RHS
     return u_xx - nonlinear_term
 
-def generate_dataset(n_samples, epsilon: float, x_grid, t_eval, ic_type='fourier', seed=None):
+def generate_dataset(n_samples, epsilon: float, x_grid, time_points, ic_type='fourier', seed=None):
     """Generate dataset for Allen-Cahn equation."""
     if seed is not None:
         np.random.seed(seed)
     
     # Initialize dataset array
-    dataset = np.zeros((n_samples, len(t_eval), len(x_grid)))
+    dataset = np.zeros((n_samples, len(time_points), len(x_grid)))
     
     # Generate samples
     for i in range(n_samples):
@@ -170,9 +177,9 @@ def generate_dataset(n_samples, epsilon: float, x_grid, t_eval, ic_type='fourier
         # Solve PDE using solve_ivp
         sol = scipy.integrate.solve_ivp(
             allen_cahn_rhs,
-            t_span=(t_eval[0], t_eval[-1]),
+            t_span=(time_points[0], time_points[-1]),
             y0=u0,
-            t_eval=t_eval,
+            t_eval=time_points,
             args=(epsilon, x_grid),
             method='RK45',
             rtol=1e-6,
@@ -184,43 +191,70 @@ def generate_dataset(n_samples, epsilon: float, x_grid, t_eval, ic_type='fourier
     return dataset
 
 def main():
-    """Generate all datasets."""
-    # Set up spatial grid
-    nx = 128
-    x_grid = np.linspace(-1, 1, nx) # (128, )
-    print(f"shape of x_grid: {x_grid.shape}")
-
-    # Set up temporal grid
-    dt = 0.25
-    t_eval = np.arange(0, 5*dt, dt) # (5, ) [0.0, 0.25, 0.50, 0.75, 1.0]
-    print(f"t_eval = {t_eval}")
-    
     # Parameters for datasets
-    epsilons = [0.1, 0.05, 0.02]  # Different epsilon values
-    n_train = 1000  # Number of training samples per configuration
-    n_test = 200    # Number of test samples
+    nx = 128
+    x_min = -1.0
+    x_max = 1.0
+    x_grid = np.linspace(x_min, x_max, nx) # (128, )
+    # n_train = 1000  # Number of training samples per configuration
+    # n_test = 200    # Number of test samples
     base_seed = 1  # For reproducibility
+    n_train = 2  # Number of training samples per configuration
+    n_test = 2    # Number of test samples
+
+    # Hyperparameters 
+    epsilon_values = [0.1, 0.05, 0.02]  # Different epsilon values
+    dt = 0.25
+    time_points = np.arange(0, 5*dt, dt) # (5, ) [0.0, 0.25, 0.50, 0.75, 1.0]
+    print(f"time_points = {time_points}")
+
+    # Create a configuration dictionary
+    config = {
+        'spatial_grid': {
+            'nx': nx,
+            'x_min': x_min,
+            'x_max': x_max,
+            'x_grid': x_grid.tolist()  # Convert numpy array to list for JSON serialization
+        },
+        'temporal_grid': {
+            'dt': dt,
+            'time_points': time_points.tolist()  # Convert numpy array to list
+        },
+        'dataset_params': {
+            'epsilon_values': epsilon_values,
+            'n_train': n_train,
+            'n_test': n_test,
+            'base_seed': base_seed
+        }
+    }
 
     # TODO: scale the time depending on values of epsilon
     ic_types = ['fourier', 'gmm', 'piecewise']
     for ic_type in ic_types:
         # Create data directory for storing different types of IC
-        data_dir = f"data/{ic_type}"
+        data_dir = f"data/{ic_type}/{get_dataset_folder_name(dt)}"
         os.makedirs(data_dir, exist_ok=True)
+        with open(f"{data_dir}/config.json", 'w') as f:
+            json.dump(config, f, indent=4)
 
         # Start from base seed for current datatype
         seed = base_seed
-        for epsilon in epsilons:
-            data_dir = f"data/{ic_type}/dt_{dt}_ep_{epsilon}"
-            os.makedirs(data_dir, exist_ok=True)
 
+        # Create data dict that stores all epsilon samples for current IC
+        train_data_dict = {}
+        test_data_dict  = {}
+        for eps in epsilon_values:
             # Generate training datasets for each epsilon and IC type
-            train_dataset = generate_dataset(n_train, epsilon, x_grid, t_eval, ic_type=ic_type, seed=seed)
-            np.save(f"{data_dir}/train_sol.npy", train_dataset)
+            train_dataset = generate_dataset(n_train, eps, x_grid, time_points, ic_type=ic_type, seed=seed)
+            train_data_dict[eps] = train_dataset
 
             # Generate standard test dataset
-            test_dataset = generate_dataset(n_test, epsilon, x_grid, t_eval, ic_type=ic_type, seed=seed+n_train)
-            np.save(f"{data_dir}/test_sol.npy", test_dataset)
+            test_dataset = generate_dataset(n_test, eps, x_grid, time_points, ic_type=ic_type, seed=seed+n_train)
+            test_data_dict[eps] = test_dataset
+
+        # Store datasets
+        np.save(f"{data_dir}/train_sol.npy", train_data_dict)
+        np.save(f"{data_dir}/test_sol.npy", test_data_dict)
 
 
     # TODO: Generate OOD test datasets (high frequency, sharp transitions)
