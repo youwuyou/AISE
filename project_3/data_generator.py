@@ -239,7 +239,7 @@ class DatasetGenerator:
                         y0=u0,
                         t_eval=time_points,
                         args=(eps, self.domain.x),
-                        method='RK45',
+                        method='Radau',
                         rtol=1e-6,
                         atol=1e-6
                     )
@@ -400,7 +400,7 @@ class DatasetGenerator:
         return fig, anim
 
 
-def plot(domain: DomainConfig, n_samples: int = 5):
+def plot(domain: DomainConfig, added_epsilon_values:list, n_samples: int = 5):
     # Load the latest created dataset
     data_folders = sorted(Path(f'data').glob('dt_*'), key=lambda d: d.stat().st_mtime)
     data_folder  = data_folders[-1]
@@ -413,6 +413,7 @@ def plot(domain: DomainConfig, n_samples: int = 5):
     time_points = np.array(config['temporal_grid']['time_points'])
     epsilon_values = config['dataset_params']['epsilon_values']
     generator = DatasetGenerator(domain, epsilon_values)
+    eps_generator = DatasetGenerator(domain, added_epsilon_values)
 
     # Plot training samples
     print_bold(f"Plotting {n_samples} training samples")
@@ -447,9 +448,21 @@ def plot(domain: DomainConfig, n_samples: int = 5):
     anim.save(f'{data_folder}/sol_dt_{domain.dt}_test_ood.gif', writer='pillow')
     plt.close()
 
+    # Plot testing samples with different ɛ
+    print_bold(f"Plotting {n_samples} testing samples with different ɛ")
+    ood_test_data_dict = np.load(f"{data_folder}/test_sol_eps.npy", allow_pickle=True).item()
+    fig = eps_generator.plot_samples(ood_test_data_dict, n_samples=n_samples)
+    plt.savefig(f"{data_folder}/sample_comparison_eps")
+    plt.close()
+
+    fig, anim = eps_generator.plot_sample_animation(ood_test_data_dict)
+    anim.save(f'{data_folder}/sol_dt_{domain.dt}_test_eps.gif', writer='pillow')
+    plt.close()
+
 
 def generate(domain: DomainConfig, 
             epsilon_values: list,
+            added_epsilon_values: list,
             base_seed = 1,
             n_train: int = 1000,
             n_test: int = 200,
@@ -497,6 +510,7 @@ def generate(domain: DomainConfig,
         },
         'dataset_params': {
             'epsilon_values': epsilon_values,
+            'added_epsilon_values': added_epsilon_values,
             'n_train': n_train,
             'n_test': n_test,
             'base_seed': base_seed
@@ -513,6 +527,7 @@ def generate(domain: DomainConfig,
     # Create generator
     generator     = DatasetGenerator(domain, epsilon_values, samplers)
     ood_generator = DatasetGenerator(domain, epsilon_values, ood_samplers)
+    eps_generator = DatasetGenerator(domain, added_epsilon_values, samplers)
 
     # Generate training & test datasets for each epsilon and IC type
     print_bold(f"Generating Training dataset with {n_train} samples")
@@ -524,9 +539,16 @@ def generate(domain: DomainConfig,
     np.save(f"{data_dir}/test_sol.npy", test_dataset)
 
     # Generate OOD test datasets (high frequency, sharp transitions)
-    print_bold(f"Generating OOD Testing dataset with {n_test} samples")
+    # - Use same epsilon values, different sampler setups!
+    print_bold(f"Generating OOD Testing dataset with {n_test} samples (Varying samplers)")
     ood_test_dataset = ood_generator.generate_dataset(n_samples=n_test, base_seed=base_seed+n_train+n_test)
     np.save(f"{data_dir}/test_sol_OOD.npy", ood_test_dataset)
+
+    # Generate test datasets (ɛ value interpolation, extrapolation)
+    # - Use different epsilon values, same sampler setups!
+    print_bold(f"Generating Testing dataset with {n_test} samples (Extra-, interpolation of ɛ)")
+    epsilon_test_dataset = eps_generator.generate_dataset(n_samples=n_test, base_seed=base_seed+n_train+n_test+n_test)
+    np.save(f"{data_dir}/test_sol_eps.npy", epsilon_test_dataset)
 
 
 if __name__ == '__main__':
@@ -538,16 +560,29 @@ if __name__ == '__main__':
     
     # Specify domain config
     time_scale = 1e-2
-    dt = 0.50 * time_scale
+    # dt = 0.50 * time_scale
+    dt = 0.25 * time_scale
     domain = DomainConfig(x_min=-1.0, x_max=1.0, nx=128, nt = 5, dt = dt)
 
     # Specify parameters
-    epsilon_values = [10.0, 0.5, 0.1, 0.05, 0.01]
+    epsilon_values     = [10.0, 0.5, 0.1, 0.05, 0.01]
+
+    # Additional epsilon value (Extrapolation and interpolation)
+    added_epsilon_values = [1000.0, 100.0, 5.0, 1.0, 0.75, 0.25, 0.008, 0.006]
+
+    # In all
+    # [1000.0, 100.0, 10.0, 5.0, 1.0, 0.75, 0.5, 0.25, 0.1, 0.05, 0.01, 0.008, 0.006]
+    # Original
+    # [      ,      , 10.0,    ,    ,     , 0.5, 0.25, 0.1, 0.05, 0.01,      ,       ]
+    # Interpolation
+    # [      ,      ,     , 5.0, 1.0, 0.75,     , 0.25,    ,     ,     ,     ,       ]
+    # Extrapolation
+    # [1000.0, 100.0,     ,    ,    ,     ,     ,     ,    ,     ,     , 0.008, 0.006]
 
     if not args.plot and not args.generate:
-        generate(domain, epsilon_values)  # If no flags are provided, do both operations
-        plot(domain)
+        generate(domain, epsilon_values, added_epsilon_values)  # If no flags are provided, do both operations
+        plot(domain, added_epsilon_values)
     elif args.plot:
-        plot(domain) # plot only
+        plot(domain, added_epsilon_values) # plot only
     elif args.generate:
-        generate(domain, epsilon_values) # generate only
+        generate(domain, epsilon_values, added_epsilon_values) # generate only

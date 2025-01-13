@@ -34,16 +34,16 @@ In the following table, one can see for each dataset 5 selected samples at initi
 
 | Training Data (`train_sol.npy`) | Testing Data (`test_sol.npy`) | OOD Testing Data (`test_sol_OOD.npy`) |
 | --- | --- | --- |
-| ![training](data/dt_0.005_20250112_192434/sample_comparison_train.png)   | ![testing](data/dt_0.005_20250112_192434/sample_comparison_test.png)     | ![ood testing](data/dt_0.005_20250112_192434/sample_comparison_ood.png)     |
+| ![training](data/dt_0.0025_20250113_095320/sample_comparison_train.png)   | ![testing](data/dt_0.0025_20250113_095320/sample_comparison_test.png)     | ![ood testing](data/dt_0.0025_20250113_095320/sample_comparison_ood.png)     |
 
 ### Solution Trajectories Across 5 Timestamps
 
 In total, a fixed number of timestamps `nt = 5` are used. The temporal grid is discretized uniformly, and thus all timesteps are of size $\Delta t = 0.005$.
 
-![In-distribution Evolution](data/dt_0.005_20250112_192434/sol_dt_0.005_train.gif)
+![In-distribution Evolution](data/dt_0.0025_20250113_095320/sol_dt_0.005_train.gif)
 *Evolution of Selected trajectories at different ɛ from `train_sol.npy` (In-distribution)*
 
-![OOD Evolution](data/dt_0.005_20250112_192434/sol_dt_0.005_test_ood.gif)
+![OOD Evolution](data/dt_0.0025_20250113_095320/sol_dt_0.005_test_ood.gif)
 *Evolution of Selected trajectories at different ɛ from `test_sol_OOD.npy` (OOD)*
 
 
