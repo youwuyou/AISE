@@ -1,12 +1,17 @@
 # AI in Sciences and Engineering - Final Projects
 
+<div align="center">
+
+**[Overview](#overview)** |
+**[Installation](#installation)** |
+**[Experimental Setup](#experimental-setup)**
+
+</div>
+
+
 This repository contains the implementation of the final projects for the course AI in Sciences and Engineering 401-4656-21L at ETH Zürich.
 
----
 
-**[Installation](##installation)** |
-**[Overview](##overview)** |
-**[Experimental](##experimental-setup)** 
 
 
 ## Overview
