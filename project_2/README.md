@@ -141,10 +141,10 @@ each with an relative L2 error of $11.80157470703125$% and $12.238569259643555$%
 [^1]: **Data-driven discovery of partial differential equations**
     S. H. Rudy, S. L. Brunton, J. L. Proctor, and J. N. Kutz
     *Science Advances, vol. 3, no. 4, 2017*
-    [[paper]](https://arxiv.org/abs/1609.06401)
+    [[paper]](https://www.science.org/doi/10.1126/sciadv.1602614)
  
 
 [^2]: **Discovering governing equations from data: Sparse identification of nonlinear dynamical systems**
     S. L. Brunton, J. L. Proctor, and J. N. Kutz
     *Proceedings of the National Academy of Sciences of the United States of America, vol. 113, no. 15, pp. 3932–3937, 2015*
-    [[paper]](https://arxiv.org/abs/1509.03580)
+    [[paper]](https://www.pnas.org/doi/10.1073/pnas.1517384113)
