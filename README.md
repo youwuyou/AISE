@@ -2,6 +2,22 @@
 
 This repository contains the implementation of the final projects for the course AI in Sciences and Engineering 401-4656-21L at ETH Zürich.
 
+---
+
+**[Installation](##installation)** |
+**[Overview](##overview)** |
+**[Experimental](##experimental-setup)** 
+
+
+## Overview
+
+The repository consists of three main projects:
+
+1. Training FNO to Solve the 1D Wave Equation
+2. PDE-Find: Reconstructing PDEs from Data
+3. Foundation Models for Phase-Field Dynamics
+
+
 ## Installation
 
 1. Create and activate virtual environment:
@@ -34,32 +50,6 @@ spack load git-lfs # then you can load the module and proceed with pulling LFS f
 ```bash
 pip install -r requirements.txt
 ```
-
-## Repository Structure
-
-The repository consists of three main projects:
-
-1. Training FNO to Solve the 1D Wave Equation
-2. PDE-Find: Reconstructing PDEs from Data
-3. Foundation Models for Phase-Field Dynamics
-
-## Progress Overview
-
-| Task  | ML-based Implementation | Numerical Solver Implementation | Documentation |
-|-------------------------------|-------------------|------------------|---------------|
-| 1. 1D Wave Equation (FNO) | ✅  | N/A   | ✅  |
-| Bonus 1: All2all Training     | ✅    | N/A | ✅  |
-| 2. PDE-Find   | ✅    | N/A   | 🚧 |
-| 3. Phase-Field Dynamics    | ⏳ Not Started    | ⏳ Not Started   | ⏳  |
-| Bonus 2: Stability Analysis    | ⏳ Not Started    | N/A    | ⏳            |
-
-### Legend:
-- ✅ Complete
-- 🚧 In Progress
-- ⏳ Not Started
-- ❌ Blocked
-- N/A Not Applicable
-
 
 ## Experimental Setup
 
