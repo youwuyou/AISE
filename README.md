@@ -28,7 +28,7 @@ The repository contains implementation of state-of-the-art machine learning arch
 
 
 | Project | Topic | Task | Report |
-| :---: | :--- | :--- | :---: |
+| :---: | :--- | :---: | :---: |
 | [1](project_1/) | [Fourier Neural Operator (FNO)](https://arxiv.org/abs/2010.08895) | [<img src="assets/done_icon.png" alt="View Task" width="20"/>](assets/project-1-fno-on-1d-wave.pdf) | [<img src="assets/pdf_icon.png" alt="Download Report" width="20"/>](project_1/report.pdf) |
 | [2](project_2) | [Data-driven discovery of partial differential equations (PDE-Find)](https://www.science.org/doi/10.1126/sciadv.1602614) | [<img src="assets/done_icon.png" alt="View Task" width="20"/>](assets/project-2-pde-find.pdf) | [<img src="assets/pdf_icon.png" alt="Download Report" width="20"/>](project_2/report.pdf) |
 | [3](project_3) | [FNO for Transfer Learning](https://arxiv.org/abs/2306.00258v1) | [<img src="assets/done_icon.png" alt="View Task" width="20"/>](assets/project-3-phase-field-dynamics.pdf) | [<img src="assets/pdf_icon.png" alt="Download Report" width="20"/>](project_3/report.pdf) |
