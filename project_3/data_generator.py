@@ -9,7 +9,6 @@ Code reference and inspirations taken from:
     - General: https://databookuw.com/
 
 - Gaussian
-    - General: https://katbailey.github.io/post/gaussian-processes-for-dummies/
     - component normalization to [-1, 1]: https://stats.stackexchange.com/questions/178626/how-to-normalize-data-between-1-and-1
 """
 

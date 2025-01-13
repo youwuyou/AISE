@@ -6,6 +6,8 @@ from torch.utils.data import Dataset, DataLoader
 import json
 from pathlib import Path
 
+from utils import print_bold
+
 class AllenCahnDataset(Dataset):
     def __init__(self, data, epsilon_values, time_points):
         """
@@ -129,44 +131,50 @@ def main():
     # Extract parameters from config        
     time_points = np.array(config['temporal_grid']['time_points'])
     epsilon_values = config['dataset_params']['epsilon_values']
+    added_epsilon_values = config['dataset_params']['added_epsilon_values']
 
-    # Fetch data dictionary
+    # Reporting some other information
+    n_train = config['dataset_params']['n_train']
+    n_test = config['dataset_params']['n_test']
+    dt = config['temporal_grid']['dt']
+    nx = config['spatial_grid']['nx']
+    x_grid = np.array(config['spatial_grid']['x_grid'])
+
+    #==================================================
+    # Load training data and train
+    #==================================================
+    print_bold("1. Pre-training of the Foundation model")
     train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()
-    # test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
+    for ic_type in train_data_dict.keys():
+        print(f"Training with IC data of function class {ic_type}")
+        train_dataset = AllenCahnDataset(train_data_dict[ic_type], epsilon_values, time_points)
+        # TODO: use train_model here
 
-    # Initialize data dictionary
-    print(f"Training dataset with epsilon values {train_data_dict.keys()}")
-    # print(f"Testing dataset with epsilon values {test_data_dict.keys()}")
+    #==================================================
+    # Evaluation
+    #==================================================    
+    print_bold("2. Evaluation of the Foundation model")
 
-    for i, (sampler_name, samples) in enumerate(train_data_dict.items()):
-        print(f"current initial condition {sampler_name}")
-        print(f"trajectories shape {samples.keys()}")
+    # Standard test set with default samplers
+    print_bold(f"2.1 In-distribution test set with ɛ = {epsilon_values} and default samplers")
+    test_data_dict = np.load(f"{data_folder}/test_sol.npy", allow_pickle=True).item()
+    for ic_type in test_data_dict.keys():
+        print(f"Evaluating with IC data of function class {ic_type}")
+        test_dataset = AllenCahnDataset(test_data_dict[ic_type], epsilon_values, time_points)
 
-        for eps in samples.keys():
-            print(f"current eps {eps}")
+    # OOD test set with special samplers but standard eps
+    print_bold(f"2.2 OOD test set with same ɛ = {epsilon_values}, but special parameters for samplers: {config['ood_params']}")
+    test_ood_data_dict = np.load(f"{data_folder}/test_sol_OOD.npy", allow_pickle=True).item()
+    for ic_type in test_ood_data_dict.keys():
+        print(f"Evaluating with IC data of function class {ic_type}")
+        test_ood_dataset = AllenCahnDataset(test_ood_data_dict[ic_type], epsilon_values, time_points)
 
-            trajectories = train_data_dict[sampler_name][eps]
-            print(f"trajectories shape {trajectories.shape}")
-
-        # of shape (3, 5, 128)
-        print(f"{train_data_dict['PL'].keys()}")
-
-        print(f"IC PL at epsilon {0.1}: {train_data_dict['PL'][0.1].shape}")
-
-        # for eps in epsilon_values:
-        #     print(f"current ")
-
-        # # TODO: use train_model here, but move AllenCahnDataset out!
-        # train_dataset = AllenCahnDataset(train_data_dict, epsilon_values, time_points)
-        # test_dataset = AllenCahnDataset(test_data_dict, epsilon_values, time_points)
-
-        # Reporting some information
-        n_train = config['dataset_params']['n_train']
-        n_test = config['dataset_params']['n_test']
-        dt = config['temporal_grid']['dt']
-        nx = config['spatial_grid']['nx']
-        x_grid = np.array(config['spatial_grid']['x_grid'])
-
+    # Epsilon test set with extra-, interpolated eps
+    print_bold(f"2.3 Epsilon test set with special ɛ = {added_epsilon_values} and default samplers")
+    test_eps_data_dict = np.load(f"{data_folder}/test_sol_eps.npy", allow_pickle=True).item()
+    for ic_type in test_eps_data_dict.keys():
+        print(f"Evaluating with IC data of function class {ic_type}")
+        test_eps_dataset = AllenCahnDataset(test_eps_data_dict[ic_type], added_epsilon_values, time_points)
 
 if __name__ == '__main__':
     main()
