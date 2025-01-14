@@ -10,9 +10,18 @@ Code reference and inspiration taken from:
     https://github.com/camlab-ethz/ConvolutionalNeuralOperator/blob/517b0ee78a97ed2a7883470a418d2c65eae68d3d/_OtherModels/FNOModules.py
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+# For testing the model
+from training import (
+get_loss_func,
+get_optimizer,
+train_step,
+validation_step
+)
 
 class SpectralConv1d(nn.Module):
     """
@@ -245,58 +254,50 @@ class AllenCahnFNO(nn.Module):
         u = u.reshape(batch_size, n_steps, x_size)
         return u
 
-def get_loss_func():
-    """
-    TODO: Define custom loss function(s) for training
-    Consider:
-    - L2 loss on predictions
-    - Physical constraints (energy, boundaries)
-    - Gradient-based penalties
-    """
-    pass
-
-def get_optimizer(model):
-    """
-    TODO: Configure optimizer and learning rate schedule
-    Consider:
-    - Adam with appropriate learning rate
-    - Learning rate schedule for curriculum
-    """
-    pass
-
-def train_step(model, batch, optimizer, loss_func):
-    """
-    TODO: Implement single training step
-    1. Forward pass
-    2. Loss computation
-    3. Backward pass
-    4. Optimizer step
-    Return loss value
-    """
-    pass
-
-def validation_step(model, batch, loss_func):
-    """
-    TODO: Implement single validation step
-    Similar to train_step but without gradient updates
-    Return loss value
-    """
-    pass
-
 # Example usage:
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # Set random seeds
+    torch.manual_seed(0)
+    np.random.seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(0)
+
     # Model initialization
-    model = AllenCahnFNO(modes=16, width=64, depth=4, device=device)
+    model = AllenCahnFNO(modes=16, width=128, depth=4, device=device)
 
     # Sample data
     batch_size, x_size = 32, 128
-    x = torch.randn(batch_size, x_size, device=device)
+    u0 = torch.randn(batch_size, x_size, device=device)
+    ut = u0.unsqueeze(1).expand(-1, 4, -1)
+
     eps = torch.randn(batch_size, 1, device=device)
     t = torch.linspace(0, 1, 4, device=device)[None].expand(batch_size, -1)  # Move to device
 
     # Forward pass
-    output = model(x, eps, t)  # Should return (batch_size, n_steps, x_size)
-    print(f"Output shape: {output.shape}")
+    ut_pred = model(u0, eps, t)  # Should return (batch_size, n_steps, x_size)
+    print(f"Input: {u0}")
+    print(f"u(x, t):   {ut}")
+    print(f"Output: {ut_pred}")
+
+    print(f"Input shape: {u0.shape}")
+    print(f"Output shape: {ut_pred.shape}")
+    print(f"Error: {torch.abs(ut - ut_pred)}")
+
+    # l1, mse, cross_entropy
+    l = get_loss_func("l1")
+    print(f"My loss fun: {l}")
+    batch = {
+        "initial": u0, 
+        "epsilon": eps,
+        "times":   t,
+        "target": ut  # Shape: [32, 4, 128]
+    }
+    optimizer  = get_optimizer(model, learning_rate=1e-4)
+    train_loss = train_step(model, batch, optimizer, l)
+    val_loss   = validation_step(model, batch, l)
+
+    print(f"training loss: {train_loss}")
+    print(f"validation loss: {val_loss}")
