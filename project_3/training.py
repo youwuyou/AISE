@@ -47,6 +47,53 @@ class AllenCahnDataset(Dataset):
             'times': torch.FloatTensor(self.time_points[1:])
         }
 
+def get_loss_func(name: str):
+    """
+    Define custom loss function(s) for training
+    TODO: Consider:
+    - L2 loss on predictions
+    - Physical constraints (energy, boundaries)
+    - Gradient-based penalties
+    """
+    loss_fun = None
+    if name == "l1":
+        loss_fun = nn.L1Loss()
+    elif name == "mse":
+        loss_fun = nn.MSELoss()
+    elif name == "cross_entropy":
+        loss_fun = nn.CrossEntropyLoss()
+
+    return loss_fun
+
+def get_optimizer(model, learning_rate=1e-3):
+    """
+    TODO: Configure optimizer and learning rate schedule
+    Consider:
+    - Adam with appropriate learning rate
+    - Learning rate schedule for curriculum
+    """
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    return optimizer
+
+def train_step(model, batch, optimizer, l):
+    """
+    Implement single training step
+    """
+    optimizer.zero_grad()
+    pred = model(batch['initial'], batch['epsilon'], batch['times']) # 1. Forward pass
+    loss_func = l(pred, batch['target']) # 2. Loss computation
+    loss_func.backward()    # 3. Backward pass
+    optimizer.step()        # 4. Optimizer step
+    return loss_func.item() # Return loss value
+
+def validation_step(model, batch, l):
+    """
+    Implement single validation step    
+    """
+    # Similar to train_step but without gradient updates
+    pred = model(batch['initial'], batch['epsilon'], batch['times'])
+    return l(pred, batch['target']).item() # Return loss value
+
 def train_model(model, train_data, val_data, epsilon_values, time_points, 
                 batch_size=32, epochs=100, device='cuda',
                 learning_rate=1e-3, curriculum_steps=None):
@@ -66,7 +113,9 @@ def train_model(model, train_data, val_data, epsilon_values, time_points,
     
     model = model.to(device)
     best_val_loss = float('inf')
-    
+
+    # TODO: change this
+    l = torch.nn.MSELoss()
     for epoch in range(epochs):
         # Update curriculum if needed
         if curriculum_steps:
@@ -82,19 +131,7 @@ def train_model(model, train_data, val_data, epsilon_values, time_points,
         for batch in train_loader:
             # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
-            
-            optimizer.zero_grad()
-            
-            # Forward pass - implement your model to handle these inputs
-            pred = model(batch['initial'], batch['epsilon'], batch['times'])
-            
-            # Compute loss - you might want to modify this
-            loss = nn.MSELoss()(pred, batch['target'])
-            
-            loss.backward()
-            optimizer.step()
-            
-            train_loss += loss.item()
+            train_loss += train_step(model, batch, optimizer, l)
         
         # Validation
         model.eval()
@@ -102,8 +139,7 @@ def train_model(model, train_data, val_data, epsilon_values, time_points,
         with torch.no_grad():
             for batch in val_loader:
                 batch = {k: v.to(device) for k, v in batch.items()}
-                pred = model(batch['initial'], batch['epsilon'], batch['times'])
-                val_loss += nn.MSELoss()(pred, batch['target']).item()
+                val_loss += validation_step(model, batch, l)
         
         train_loss /= len(train_loader)
         val_loss /= len(val_loader)
