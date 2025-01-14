@@ -29,6 +29,14 @@ class AllenCahnDataset(Dataset):
         return len(self.indices)
     
     def __getitem__(self, idx):
+        """
+        Returns a dictionary contains 4 keys:
+        1. 'initial': tensor of length 128 (u(x, 0))
+        2. 'target': 4x128 tensor showing decay patterns
+            - use target[i] to access u(x, t = iΔt)
+        3. 'epsilon': single value tensor [10.0]
+        4. 'times': 4 timesteps [0.0025, 0.0050, 0.0075, 0.0100]  
+        """
         eps, sample_idx = self.indices[idx]
         trajectory = self.data[eps][sample_idx]
         
@@ -175,6 +183,7 @@ def main():
     for ic_type in test_eps_data_dict.keys():
         print(f"Evaluating with IC data of function class {ic_type}")
         test_eps_dataset = AllenCahnDataset(test_eps_data_dict[ic_type], added_epsilon_values, time_points)
+        
 
 if __name__ == '__main__':
     main()

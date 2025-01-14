@@ -88,6 +88,7 @@ class PiecewiseLinearSampler(FunctionSampler):
         y_values = np.random.uniform(-self.y_scale, self.y_scale, self.n_pieces)
         
         # Randomly select two different positions to place -1 and 1
+        # - if initial state u(x, 0) ≥ 0 is used, we will only having travelling wave
         positions = np.random.choice(range(self.n_pieces - 1), size=2, replace=False)
         y_values[positions[0]] = -self.y_scale  # Place -1
         y_values[positions[1]] = self.y_scale   # Place 1
