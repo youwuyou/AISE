@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from model import AllenCahnFNO
 
 import json
 from pathlib import Path
@@ -157,14 +158,23 @@ def train_model(model, train_data, val_data, epsilon_values, time_points,
 
 
 def main():
-    # Example curriculum steps
-    curriculum_steps = [
-        (0, [0.1]),           # Start with largest epsilon
-        (20, [0.1, 0.05]),    # Add medium epsilon
-        (40, [0.1, 0.05, 0.02])  # Add smallest epsilon
-    ]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
-    # Load the latest created dataset
+    # Set random seeds
+    torch.manual_seed(0)
+    np.random.seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(0)
+
+    #==================================================
+    # Model initialization
+    #==================================================
+    model = AllenCahnFNO(modes=16, width=128, depth=4, device=device)
+
+    #==================================================
+    # Load training data
+    #==================================================
     data_folders = sorted(Path(f'data').glob('dt_*'), key=lambda d: d.stat().st_mtime)
     data_folder  = data_folders[-1]
     print(f"Loading dataset from {data_folder}")
@@ -177,6 +187,15 @@ def main():
     epsilon_values = config['dataset_params']['epsilon_values']
     added_epsilon_values = config['dataset_params']['added_epsilon_values']
 
+    # TODO: sort curriculum steps by increasing system difficulty
+    # use epsilon_values we get from config
+    # Example curriculum steps
+    curriculum_steps = [
+        (0, [0.1]),           # Start with largest epsilon
+        (20, [0.1, 0.05]),    # Add medium epsilon
+        (40, [0.1, 0.05, 0.02])  # Add smallest epsilon
+    ]
+
     # Reporting some other information
     n_train = config['dataset_params']['n_train']
     n_test = config['dataset_params']['n_test']
@@ -185,7 +204,7 @@ def main():
     x_grid = np.array(config['spatial_grid']['x_grid'])
 
     #==================================================
-    # Load training data and train
+    # Training
     #==================================================
     print_bold("1. Pre-training of the Foundation model")
     train_data_dict = np.load(f"{data_folder}/train_sol.npy", allow_pickle=True).item()

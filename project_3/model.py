@@ -15,14 +15,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# For testing the model
-from training import (
-get_loss_func,
-get_optimizer,
-train_step,
-validation_step
-)
-
 class SpectralConv1d(nn.Module):
     """
     The FNOBlock uses SpectralConv1d as its crucial part, 
@@ -285,19 +277,3 @@ if __name__ == "__main__":
     print(f"Input shape: {u0.shape}")
     print(f"Output shape: {ut_pred.shape}")
     print(f"Error: {torch.abs(ut - ut_pred)}")
-
-    # l1, mse, cross_entropy
-    l = get_loss_func("l1")
-    print(f"My loss fun: {l}")
-    batch = {
-        "initial": u0, 
-        "epsilon": eps,
-        "times":   t,
-        "target": ut  # Shape: [32, 4, 128]
-    }
-    optimizer  = get_optimizer(model, learning_rate=1e-4)
-    train_loss = train_step(model, batch, optimizer, l)
-    val_loss   = validation_step(model, batch, l)
-
-    print(f"training loss: {train_loss}")
-    print(f"validation loss: {val_loss}")
