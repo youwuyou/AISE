@@ -192,9 +192,11 @@ class AllenCahnFNO(nn.Module):
         self.modes = modes
         self.width = width
         self.depth = depth
+        self.activation = nn.GELU()
 
-        # Input layer: maps input scalar to hidden channels
+        # Lifting & Projecting
         self.input_layer = nn.Linear(1, self.width)
+        self.output_layer = nn.Linear(self.width, 1)
 
         # FNO layers
         self.fno_layers = nn.ModuleList([
@@ -205,12 +207,6 @@ class AllenCahnFNO(nn.Module):
         self.FILM_layers = nn.ModuleList([
             FILM(self.width, use_bn=True) for _ in range(self.depth)
         ])
-
-        # Activation function
-        self.activation = nn.GELU()
-
-        # Output layer: maps hidden channels back to scalar output
-        self.output_layer = nn.Linear(self.width, 1)
 
         self.to(device)  # Move entire model to specified device
 
@@ -234,7 +230,6 @@ class AllenCahnFNO(nn.Module):
 
         # Iterate through FNO layers with FILM conditioning
         for layer_idx in range(self.depth):
-            # Apply FNO layer
             u = self.fno_layers[layer_idx](u)       # [batch_size * n_steps, width, x_size]
             u = self.activation(u)                   # Non-linear activation
             u = self.FILM_layers[layer_idx](u, eps_flat, t_flat)  # [batch_size * n_steps, width, x_size]
@@ -260,13 +255,14 @@ if __name__ == "__main__":
     # Model initialization
     model = AllenCahnFNO(modes=16, width=128, depth=4, device=device)
 
-    # Sample data
+    # Create dummy input data
     batch_size, x_size = 32, 128
     u0 = torch.randn(batch_size, x_size, device=device)
-    ut = u0.unsqueeze(1).expand(-1, 4, -1)
-
     eps = torch.randn(batch_size, 1, device=device)
     t = torch.linspace(0, 1, 4, device=device)[None].expand(batch_size, -1)  # Move to device
+
+    # Create dummy output data
+    ut = u0.unsqueeze(1).expand(-1, 4, -1)
 
     # Forward pass
     ut_pred = model(u0, eps, t)  # Should return (batch_size, n_steps, x_size)
