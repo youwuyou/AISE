@@ -242,7 +242,7 @@ def main():
 
     # Create experiment directory with model config
     experiment_name = get_experiment_name(model_config)
-    checkpoint_dir = Path(f"checkpoints/base") / experiment_name
+    checkpoint_dir = Path(f"checkpoints/") / experiment_name
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     print(f"Trained model will be stored under {checkpoint_dir}")
 
