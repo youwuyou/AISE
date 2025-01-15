@@ -8,6 +8,9 @@ Code reference and inspiration taken from:
 
 - FNO implementation:
     https://github.com/camlab-ethz/ConvolutionalNeuralOperator/blob/517b0ee78a97ed2a7883470a418d2c65eae68d3d/_OtherModels/FNOModules.py
+
+- FiLM layer for general conditioning
+    https://ml-retrospectives.github.io/neurips2019/accepted_retrospectives/2019/film/
 """
 
 import numpy as np
@@ -187,6 +190,17 @@ class FILM(nn.Module):
         return x * scale + bias
 
 class AllenCahnFNO(nn.Module):
+    """
+    This class contains the implementation of the foundation model for phase-field dynamics.
+        - the backbone of it is based on FNO
+        - to incorporate ɛ, t-dependency in a pairwise manner, we use FiLM layer
+            1. inspired by the fact that FiLM layer is capable of general conditioning
+            https://ml-retrospectives.github.io/neurips2019/accepted_retrospectives/2019/film/
+
+            2. FiLM is just affine transformation, so we ensure after it there are several NN layers
+            for it to maximize its capability
+    """
+
     def __init__(self, modes=16, width=64, depth=4, device="cuda"):
         super().__init__()
         self.modes = modes
