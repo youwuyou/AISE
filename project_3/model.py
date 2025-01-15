@@ -76,7 +76,6 @@ class FNOBlock(nn.Module):
         - b^(l) is the bias term
         
         Complete architecture 
-            - Lifting and projecting done within AllenCahnFNO, unlike in project 1 done in FNO directly
             - Apply [depth] layers of Fourier integral operators with residual connections
         """
         super().__init__()
@@ -86,6 +85,9 @@ class FNOBlock(nn.Module):
         self.out_channels = out_channels
         self.depth = depth
         self.padding_frac = padding_frac
+
+        # Lifting P
+        self.fc0 = nn.Linear(in_channels, self.width)
 
         # Fourier layers
         self.spectral_list = nn.ModuleList([
@@ -102,6 +104,9 @@ class FNOBlock(nn.Module):
             nn.Parameter(torch.zeros(1, self.width, 1)) for _ in range(self.depth)
         ])
 
+        # Projection layers
+        self.fc1 = nn.Linear(self.width, 128)
+        self.fc2 = nn.Linear(128, out_channels)
         self.activation = nn.GELU()
 
     def forward(self, x):
@@ -111,6 +116,11 @@ class FNOBlock(nn.Module):
         Returns:
             torch.Tensor: Output tensor after applying spectral convolution and residual connections
         """
+        # Lifting P
+        x = x.permute(0, 2, 1)
+        x = self.fc0(x)
+        x = x.permute(0, 2, 1)
+
         # Apply padding
         x_padding = int(round(x.shape[-1] * self.padding_frac))
         x = F.pad(x, [0, x_padding])
@@ -135,7 +145,13 @@ class FNOBlock(nn.Module):
         
         # Remove padding
         x = x[..., :-x_padding]
-        
+
+        # Final projection layers Q
+        x = x.permute(0, 2, 1)
+        x = self.fc1(x)
+        x = self.activation(x)
+        x = self.fc2(x)
+        x = x.permute(0, 2, 1)
         return x  # Shape should be [batch_size * n_steps, width, x_size]
 
 class FILM(nn.Module):
