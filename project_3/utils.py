@@ -65,46 +65,37 @@ def plot_training_history(experiment_dir: Path, save_dir: Optional[Path] = None)
         config = json.load(f)
         history = config['training_history']
     
-    curriculum_steps = config.get('training_config', {}).get('curriculum_steps', [])
+    curriculum_steps = config.get('training_config', {}).get('curriculum_steps')
+    if not curriculum_steps:
+        curriculum_steps = []
     if not isinstance(curriculum_steps, list):
         raise TypeError("'curriculum_steps' should be a list.")
 
-    # Define subtle grays for the vertical lines
     gray_colors = ['#666666', '#787878', '#8A8A8A', '#9C9C9C', '#AEAEAE']
-    # Define different line styles
     line_styles = ['--', ':', '-.', (0, (5, 10)), (0, (3, 5, 1, 5))]
 
     plt.figure(figsize=(12, 7))
     
-    # Plot training and validation loss
     plt.plot(history['train_loss'], label='Training Loss', color='blue', linewidth=2)
     plt.plot(history['val_loss'], label='Validation Loss', color='red', linewidth=2)
 
-    # Calculate appropriate log-scale limits from data
     combined_losses = history['train_loss'] + history['val_loss']
     data_min, data_max = min(combined_losses), max(combined_losses)
-    
-    # Find nearest power of 10 below and above the data range
     magnitude_min = np.floor(np.log10(data_min))
     magnitude_max = np.ceil(np.log10(data_max))
-    
-    # Set limits to nearest powers of 10 with some padding
-    ymin = 10 ** (magnitude_min)
-    ymax = 10 ** (magnitude_max)
+    ymin = 10 ** magnitude_min
+    ymax = 10 ** magnitude_max
     
     print(f"Data range: {data_min:.2e} to {data_max:.2e}")
     print(f"Plot limits: {ymin:.2e} to {ymax:.2e}")
     
-    # Plot curriculum steps with varied line styles
     added_labels = set()
     for i, (epoch, val) in enumerate(curriculum_steps):
         if isinstance(val, list):
             val = val[-1]
-        
         epoch = int(epoch)
         epsilon_val = float(val)
         
-        # Use modulo to cycle through colors and line styles
         color = gray_colors[i % len(gray_colors)]
         line_style = line_styles[i % len(line_styles)]
         
@@ -112,32 +103,20 @@ def plot_training_history(experiment_dir: Path, save_dir: Optional[Path] = None)
         if label:
             added_labels.add(epsilon_val)
 
-        plt.vlines(
-            x=epoch, ymin=ymin, ymax=ymax,
-            colors=color, linestyles=line_style,
-            label=label, linewidth=1.5, alpha=0.8,
-            zorder=1
-        )
+        plt.vlines(x=epoch, ymin=ymin, ymax=ymax, colors=color, linestyles=line_style,
+                   label=label, linewidth=1.5, alpha=0.8, zorder=1)
 
     plt.title('Training History - ACE Foundation Model', pad=20, fontsize=14)
     plt.xlabel('Epoch', fontsize=12)
     plt.ylabel('Loss', fontsize=12)
     plt.yscale('log')
     
-    # Improve grid appearance
     plt.grid(True, which='major', linestyle='-', alpha=0.2)
     plt.grid(True, which='minor', linestyle=':', alpha=0.1)
-    
-    # Set axis limits explicitly
     plt.ylim(ymin, ymax)
     
-    # Improve legend
     plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0)
-    
-    # Adjust layout to prevent legend cutoff
     plt.tight_layout()
     
-    plt.savefig(save_dir / 'training_history.png',
-                bbox_inches='tight', dpi=300,
-                facecolor='white', edgecolor='none')
+    plt.savefig(save_dir / 'training_history.png', bbox_inches='tight', dpi=300, facecolor='white', edgecolor='none')
     plt.close()
