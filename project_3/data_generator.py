@@ -560,24 +560,23 @@ if __name__ == '__main__':
     
     # Specify domain config
     time_scale = 1e-2
-    # dt = 0.50 * time_scale
     dt = 0.25 * time_scale
     domain = DomainConfig(x_min=-1.0, x_max=1.0, nx=128, nt = 5, dt = dt)
 
     # Specify parameters
-    epsilon_values = [10.0, 0.5, 0.1, 0.05, 0.01]
+    epsilon_values = [0.1, 0.05, 0.01]
 
     # Additional epsilon value (Extrapolation and interpolation)
-    added_epsilon_values = [1000.0, 100.0, 5.0, 1.0, 0.75, 0.008, 0.006]
+    added_epsilon_values = [10.0, 0.5, 0.075, 0.025, 0.008, 0.006]
 
     # In all
-    # [1000.0, 100.0, 10.0, 5.0, 1.0, 0.75, 0.5, 0.25, 0.1, 0.05, 0.01, 0.008, 0.006]
+    # [10.0, 0.5, 0.1, 0.075, 0.05, 0.025, 0.01, 0.008, 0.006]
     # Original
-    # [      ,      , 10.0,    ,    ,     , 0.5, 0.25, 0.1, 0.05, 0.01,      ,       ]
+    # [    ,    , 0.1,      , 0.05,      , 0.01,      ,      ]
     # Interpolation
-    # [      ,      ,     , 5.0, 1.0, 0.75,     ,    ,    ,     ,     ,     ,       ]
+    # [    ,    ,    , 0.075,     , 0.025,     ,      ,      ]
     # Extrapolation
-    # [1000.0, 100.0,     ,    ,    ,     ,     ,     ,    ,     ,     , 0.008, 0.006]
+    # [10.0, 0.5,    ,      ,     ,     ,      , 0.008, 0.006]
 
     if not args.plot and not args.generate:
         generate(domain, epsilon_values, added_epsilon_values)  # If no flags are provided, do both operations
