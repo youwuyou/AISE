@@ -94,8 +94,8 @@ def fine_tune(model, dataset, dataset_name="test_sol", checkpoint_dir="checkpoin
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Freeze parameters based on their names
-    freeze_film = False
-    freeze_fno  = True
+    freeze_film = True
+    freeze_fno  = False
     for name, param in model.named_parameters():
         if 'input_layer' in name:
             param.requires_grad = False
@@ -162,12 +162,13 @@ def fine_tune(model, dataset, dataset_name="test_sol", checkpoint_dir="checkpoin
     return model
 
 def run_experiment(model, 
-                    test_data_dict, 
+                    test_data_dict,
                     dataset_name, 
                     epsilon_values, 
                     time_points,
                     checkpoint_dir="checkpoints/",
                     res_dir="results/",
+                    finetuned_res_dir="finetuned_results/",
                     fewshot_num=30,
                     batch_size=2,
                     device="cuda",
@@ -194,12 +195,14 @@ def run_experiment(model,
         for eps in epsilon_values:
             eps_res = {}
             # Standard test set with default samplers
-            test_dataset = AllenCahnDataset("testing",  test_data_dict, [eps], time_points, normalize=normalize, ic_types=[ic_type])
+            test_dataset  = AllenCahnDataset("testing",  test_data_dict, [eps], time_points, normalize=normalize, ic_types=[ic_type])
             data_loader   = DataLoader(test_dataset, batch_size=test_dataset.traj_total, shuffle=False)
 
-            trajectory = get_single_trajectory(model, data_loader, device)
-            plot_trajectory_comparison(dataset_name, ic_type, eps, trajectory, res_dir)
+            # Plot one sample trajectory for current I.C + epsilon category
+            trajectory_data = get_single_trajectory(model, fine_tuned_model, data_loader, device)
+            plot_single_trajectory_comparison(dataset_name, ic_type, eps, trajectory_data, res_dir)
 
+            # Evaluating all sample trajectories for current I.C. + epsilons
             eps_res["zero-shot"]  = evaluate(model, data_loader)
             eps_res["fine-tuned"] = evaluate(fine_tuned_model, data_loader)
 
@@ -213,75 +216,111 @@ def run_experiment(model,
     return res_dict
 
 @torch.no_grad()
-def get_single_trajectory(model, data_loader, device: str = "cuda"):
+def get_single_trajectory(model, fine_tuned_model, data_loader, device: str = "cuda"):
     model.eval()
     
     # Get first batch
     item_dict = next(iter(data_loader))
     
     # Get predictions
-    u_pred = model(item_dict['initial'].to(device), 
-                  item_dict['epsilon'].to(device), 
-                  item_dict['times'].to(device))
-    
+    u0 = item_dict['initial'].to(device)
+    epsilon = item_dict['epsilon'].to(device)
+    times = item_dict['times'].to(device)
+    targets = item_dict['target']
+
+    u_pred = model(u0, epsilon, times)
+    u_pred_tuned = fine_tuned_model(u0, epsilon, times)
+
     # Convert everything to numpy arrays
+    idx = 5 # choosing trajectory at index 5
     trajectory_data = {
-        'initial': item_dict['initial'][0].cpu().numpy(),
-        'target': item_dict['target'][0].cpu().numpy(),
-        'predictions': u_pred[0].cpu().numpy(),
-        'epsilon': item_dict['epsilon'][0].item(),
-        'times': item_dict['times'][0].cpu().numpy()
+        'initial': u0[idx].cpu().numpy(),
+        'target': targets[idx].cpu().numpy(),
+        'predictions': u_pred[idx].cpu().numpy(),
+        'predictions_tuned': u_pred_tuned[idx].cpu().numpy(),
+        'epsilon': epsilon[idx].item(),
+        'times': times[idx].cpu().numpy()
     }
-    
+ 
     return trajectory_data
 
-def plot_trajectory_comparison(dataset_name, ic_type, eps, trajectory_data, res_dir):
+def plot_single_trajectory_comparison(dataset_name, ic_type, eps, traj_data, res_dir):
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D, art3d
     import numpy as np
-    
-    fig = plt.figure(figsize=(15, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    x = np.linspace(0, 10, len(trajectory_data['initial']))
-    t = trajectory_data['times']
-    
-    ax.plot(x, [0]*len(x), trajectory_data['initial'],
-            color='grey', linewidth=2, label='u0')
-    
-    assert ((eps - trajectory_data['epsilon']) < 1e-3), f"Error: epsilon value does not match. Expected {eps}, but got {trajectory_data['epsilon']}"
 
-    for i in range(len(trajectory_data['target'])):
-        print(f"current i {i}")
+    fig = plt.figure(figsize=(14, 6))
+
+    assert abs(eps - traj_data['epsilon']) < 1e-3, \
+        f"Error: epsilon value does not match. Expected {eps}, got {traj_data['epsilon']}"
+
+    # X-grid from -1 to 1
+    x = np.linspace(-1, 1, len(traj_data['initial']))
+    t = traj_data['times']
+
+    # Clip to [-1, 1] to ensure amplitude in bounds
+    traj_data['initial'] = np.clip(traj_data['initial'], -1, 1)
+    traj_data['target'] = np.clip(traj_data['target'], -1, 1)
+    traj_data['predictions'] = np.clip(traj_data['predictions'], -1, 1)
+    traj_data['predictions_tuned'] = np.clip(traj_data['predictions_tuned'], -1, 1)
+
+    z_min, z_max = -1, 1
+    y_min = min(t.min(), 0)
+    y_max = max(t.max(), 0)
+
+    # Left: base
+    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
+    ax1.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2, label='u0')
+    for i in range(len(traj_data['target'])):
         color = plt.cm.Set1(i)
-        
-        # Plot true solution
-        ax.plot(x, [t[i]]*len(x), trajectory_data['target'][i],
-                color=color, linewidth=2, label=f'u{i+1}')
-
-        # Fill below true solution
-        shape = list(zip(x, [t[i]]*len(x), trajectory_data['target'][i])) \
-              + list(zip(x[::-1], [t[i]]*len(x), [0]*len(x)))
+        ax1.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
+        min_val = traj_data['target'][i].min()
+        shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
+              + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
         poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
-        ax.add_collection3d(poly)
-        
-        # Plot predictions
-        ax.plot(x, [t[i]]*len(x), trajectory_data['predictions'][i],
-                color=color, linewidth=2, linestyle='--')
-    
-    ax.set_xlabel('Spatial X')
-    ax.set_ylabel('Time')
-    ax.set_zlabel('Amplitude')
-    ax.view_init(elev=20, azim=-15)
-    ax.grid(True, alpha=0.3)
-    ax.legend()
+        ax1.add_collection3d(poly)
+        ax1.plot(x, [t[i]]*len(x), traj_data['predictions'][i], color=color, linewidth=2, linestyle='--')
+    ax1.set_xlim([-1, 1])
+    ax1.set_ylim([y_min, y_max])
+    ax1.set_zlim([z_min, z_max])
+    ax1.set_title('Base Model')
+    ax1.view_init(elev=20, azim=-15)
+
+    # Right: fine-tuned
+    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
+    ax2.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2, label='u0')
+    for i in range(len(traj_data['target'])):
+        color = plt.cm.Set1(i)
+        ax2.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
+        min_val = traj_data['target'][i].min()
+        shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
+              + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
+        poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
+        ax2.add_collection3d(poly)
+        ax2.plot(x, [t[i]]*len(x), traj_data['predictions_tuned'][i], color=color, linewidth=2, linestyle='--')
+    ax2.set_xlim([-1, 1])
+    ax2.set_ylim([y_min, y_max])
+    ax2.set_zlim([z_min, z_max])
+    ax2.set_title('Fine-tuned Model')
+    ax2.view_init(elev=20, azim=-15)
+
+    ax1.set_xlabel('Spatial X')
+    ax1.set_ylabel('Time')
+    ax1.set_zlabel('Amplitude')
+    ax2.set_xlabel('Spatial X')
+    ax2.set_ylabel('Time')
+    ax2.set_zlabel('Amplitude')
+    plt.suptitle(f"Solutions Comparison (ε={eps:.2f})")
     plt.tight_layout()
-    plt.title(f"Solutions Comparison (ɛ = {eps:.2f})", fontsize=16)
-    plt.savefig(f"{res_dir}/{dataset_name}_ic_{ic_type}_eps_{eps}.png", dpi=300, bbox_inches='tight')
+    plt.savefig(f"{res_dir}/{dataset_name}_ic_{ic_type}_eps_{eps}_combined.png", dpi=300)
     plt.close()
 
 def main(finetune: bool):
     res_dir = Path('results/')
     res_dir.mkdir(exist_ok=True)
+
+    finetuned_res_dir = Path('finetuned_results/')
+    finetuned_res_dir.mkdir(exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -331,8 +370,9 @@ def main(finetune: bool):
                                   time_points,
                                   checkpoint_dir=ace_fno_folder,
                                   res_dir=res_dir,
+                                  finetuned_res_dir=finetuned_res_dir,
                                   device=device,
-                                  normalize=True)
+                                  normalize=False)
         table_data = []
         headers = ["IC Type", "ε", "Zero-shot", "Fine-tuned", "Improvement"]
         
