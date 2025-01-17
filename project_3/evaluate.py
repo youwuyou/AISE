@@ -17,7 +17,6 @@ validation_step
 )
 
 import copy
-import argparse
 import json
 from pathlib import Path
 
@@ -168,8 +167,7 @@ def run_experiment(model,
                     time_points,
                     checkpoint_dir="checkpoints/",
                     res_dir="results/",
-                    finetuned_res_dir="finetuned_results/",
-                    fewshot_num=30,
+                    fewshot_num=20,
                     batch_size=2,
                     device="cuda",
                     normalize=False):
@@ -192,23 +190,32 @@ def run_experiment(model,
     for ic_type in ["PL", "FS", "GM"]:
         print_bold(f"Retrieving results for I.C. type: {ic_type}")
         res = {}
+        traj_dict = {}
         for eps in epsilon_values:
             eps_res = {}
             # Standard test set with default samplers
             test_dataset  = AllenCahnDataset("testing",  test_data_dict, [eps], time_points, normalize=normalize, ic_types=[ic_type])
             data_loader   = DataLoader(test_dataset, batch_size=test_dataset.traj_total, shuffle=False)
 
-            # Plot one sample trajectory for current I.C + epsilon category
-            trajectory_data = get_single_trajectory(model, fine_tuned_model, data_loader, device)
-            plot_single_trajectory_comparison(dataset_name, ic_type, eps, trajectory_data, res_dir)
-
             # Evaluating all sample trajectories for current I.C. + epsilons
             eps_res["zero-shot"]  = evaluate(model, data_loader)
             eps_res["fine-tuned"] = evaluate(fine_tuned_model, data_loader)
 
+            # Plot one sample trajectory for current I.C + epsilon category
+            trajectory_data = get_single_trajectory(model, fine_tuned_model, data_loader, device)
+            traj_dict[eps]  = trajectory_data
+
             # stores two-level nested dict
             print(f"Testing for ɛ={eps} over {test_dataset.traj_total} trajectories")
             res[eps] = eps_res
+
+        # Plot all epsilon example trajectories for current ic_typ
+        plot_single_trajectory_comparison(dataset_name, 
+                                        ic_type,
+                                        epsilon_values,
+                                        res,
+                                        traj_dict, 
+                                        res_dir)
 
         # Store results for current I.C.
         res_dict[ic_type] = res
@@ -244,83 +251,81 @@ def get_single_trajectory(model, fine_tuned_model, data_loader, device: str = "c
  
     return trajectory_data
 
-def plot_single_trajectory_comparison(dataset_name, ic_type, eps, traj_data, res_dir):
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D, art3d
+def plot_single_trajectory_comparison(dataset_name, 
+                                      ic_type, 
+                                      epsilon_values, 
+                                      res, 
+                                      traj_dict, 
+                                      res_dir):
     import numpy as np
-
-    fig = plt.figure(figsize=(14, 6))
-
-    assert abs(eps - traj_data['epsilon']) < 1e-3, \
-        f"Error: epsilon value does not match. Expected {eps}, got {traj_data['epsilon']}"
-
-    # X-grid from -1 to 1
-    x = np.linspace(-1, 1, len(traj_data['initial']))
-    t = traj_data['times']
-
-    # Clip to [-1, 1] to ensure amplitude in bounds
-    traj_data['initial'] = np.clip(traj_data['initial'], -1, 1)
-    traj_data['target'] = np.clip(traj_data['target'], -1, 1)
-    traj_data['predictions'] = np.clip(traj_data['predictions'], -1, 1)
-    traj_data['predictions_tuned'] = np.clip(traj_data['predictions_tuned'], -1, 1)
+    from mpl_toolkits.mplot3d import art3d
+    from matplotlib import pyplot as plt
+    import matplotlib.gridspec as gridspec
 
     z_min, z_max = -1, 1
-    y_min = min(t.min(), 0)
-    y_max = max(t.max(), 0)
+    fig = plt.figure(figsize=(14, 6 * len(epsilon_values)))
+    gs = gridspec.GridSpec(len(epsilon_values), 3, width_ratios=[1, 1, 0.08])
 
-    # Left: base
-    ax1 = fig.add_subplot(1, 2, 1, projection='3d')
-    ax1.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2, label='u0')
-    for i in range(len(traj_data['target'])):
-        color = plt.cm.Set1(i)
-        ax1.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
-        min_val = traj_data['target'][i].min()
-        shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
-              + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
-        poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
-        ax1.add_collection3d(poly)
-        ax1.plot(x, [t[i]]*len(x), traj_data['predictions'][i], color=color, linewidth=2, linestyle='--')
-    ax1.set_xlim([-1, 1])
-    ax1.set_ylim([y_min, y_max])
-    ax1.set_zlim([z_min, z_max])
-    ax1.set_title('Base Model')
-    ax1.view_init(elev=20, azim=-15)
+    for row, eps in enumerate(epsilon_values):
+        traj_data = traj_dict[eps]
+        x = np.linspace(-1, 1, len(traj_data['initial']))
+        t = traj_data['times']
+        y_min = min(t.min(), 0)
+        y_max = max(t.max(), 0)
+        for key in ['initial','target','predictions','predictions_tuned']:
+            traj_data[key] = np.clip(traj_data[key], -1, 1)
+        err_zeroshot  = res[eps]["zero-shot"]
+        err_finetuned = res[eps]["fine-tuned"]
 
-    # Right: fine-tuned
-    ax2 = fig.add_subplot(1, 2, 2, projection='3d')
-    ax2.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2, label='u0')
-    for i in range(len(traj_data['target'])):
-        color = plt.cm.Set1(i)
-        ax2.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
-        min_val = traj_data['target'][i].min()
-        shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
-              + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
-        poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
-        ax2.add_collection3d(poly)
-        ax2.plot(x, [t[i]]*len(x), traj_data['predictions_tuned'][i], color=color, linewidth=2, linestyle='--')
-    ax2.set_xlim([-1, 1])
-    ax2.set_ylim([y_min, y_max])
-    ax2.set_zlim([z_min, z_max])
-    ax2.set_title('Fine-tuned Model')
-    ax2.view_init(elev=20, azim=-15)
+        ax1 = fig.add_subplot(gs[row, 0], projection='3d')
+        ax2 = fig.add_subplot(gs[row, 1], projection='3d')
+        ax_text = fig.add_subplot(gs[row, 2])
+        ax_text.text(0, 0.5, f"ε = {eps}",
+                     rotation=90,
+                     verticalalignment='center',
+                     fontsize=12,
+                     fontweight='bold')
+        ax_text.axis('off')
 
-    ax1.set_xlabel('Spatial X')
-    ax1.set_ylabel('Time')
-    ax1.set_zlabel('Amplitude')
-    ax2.set_xlabel('Spatial X')
-    ax2.set_ylabel('Time')
-    ax2.set_zlabel('Amplitude')
-    plt.suptitle(f"Solutions Comparison (ε={eps:.2f})")
-    plt.tight_layout()
-    plt.savefig(f"{res_dir}/{dataset_name}_ic_{ic_type}_eps_{eps}_combined.png", dpi=300)
+        ax1.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2)
+        for i in range(len(traj_data['target'])):
+            color = plt.cm.Set1(i)
+            ax1.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
+            min_val = traj_data['target'][i].min()
+            shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
+                  + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
+            poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
+            ax1.add_collection3d(poly)
+            ax1.plot(x, [t[i]]*len(x), traj_data['predictions'][i], color=color, linewidth=2, linestyle='--')
+        ax1.set_xlim([-1, 1]); ax1.set_ylim([y_min, y_max]); ax1.set_zlim([z_min, z_max])
+        ax1.set_title(f'Base Model | Avg. Relative L2 Error: {err_zeroshot*100:.2f}%')
+        ax1.view_init(elev=20, azim=-15)
+
+        ax2.plot(x, [0]*len(x), traj_data['initial'], color='gray', linewidth=2)
+        for i in range(len(traj_data['target'])):
+            color = plt.cm.Set1(i)
+            ax2.plot(x, [t[i]]*len(x), traj_data['target'][i], color=color, linewidth=2)
+            min_val = traj_data['target'][i].min()
+            shape = list(zip(x, [t[i]]*len(x), traj_data['target'][i])) \
+                  + list(zip(x[::-1], [t[i]]*len(x), [min_val]*len(x)))
+            poly = art3d.Poly3DCollection([shape], alpha=0.2, facecolors=color)
+            ax2.add_collection3d(poly)
+            ax2.plot(x, [t[i]]*len(x), traj_data['predictions_tuned'][i], color=color, linewidth=2, linestyle='--')
+        ax2.set_xlim([-1, 1]); ax2.set_ylim([y_min, y_max]); ax2.set_zlim([z_min, z_max])
+        ax2.set_title(f'Fine-tuned Model | L2 Error: {err_finetuned*100:.2f}%')
+        ax2.view_init(elev=20, azim=-15)
+        ax1.set_xlabel('Spatial X'); ax1.set_ylabel('Time'); ax1.set_zlabel('Amplitude')
+        ax2.set_xlabel('Spatial X'); ax2.set_ylabel('Time'); ax2.set_zlabel('Amplitude')
+
+    # With a single suptitle:
+    fig.suptitle(f"Solutions Comparison ({ic_type})\nε in {epsilon_values}", fontsize=16, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(f"{res_dir}/{dataset_name}_ic_{ic_type}_combined.png", dpi=300)
     plt.close()
 
-def main(finetune: bool):
+def main():
     res_dir = Path('results/')
     res_dir.mkdir(exist_ok=True)
-
-    finetuned_res_dir = Path('finetuned_results/')
-    finetuned_res_dir.mkdir(exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -370,7 +375,6 @@ def main(finetune: bool):
                                   time_points,
                                   checkpoint_dir=ace_fno_folder,
                                   res_dir=res_dir,
-                                  finetuned_res_dir=finetuned_res_dir,
                                   device=device,
                                   normalize=False)
         table_data = []
@@ -395,8 +399,4 @@ def main(finetune: bool):
                     colalign=("left", "right", "right", "right")))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--finetune", action="store_true")
-    args = parser.parse_args()
-
-    main(finetune=args.finetune)
+    main()
