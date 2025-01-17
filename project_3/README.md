@@ -2,13 +2,13 @@
 
 In this project, we aim to train and evaluate a foundation model [^1]. Our implementation is based on the Fourier Neural Operator (FNO) [^2] as its architectural backbone.
 
-Within the scope of our project, we consider the 1D Allen-Cahn equation:
+Within the scope of our project, we consider the 1D Allen-Cahn equation with varying $\epsilon$ values:
 
 $$
 \frac{\partial u}{\partial t} = \Delta_{x} u - \frac{1}{\epsilon^{2}} (u^{3} - u), x\in [-1,1]
 $$
 
-with varying $\epsilon$ values.
+This `README.md` serves only as a brief overview on how to run our code. For more details, please see the [📄 project 3 report](report.pdf), where we explained the selection of our model architecture and capabilities & limitations of our model.
 
 ## Getting Started
 
@@ -60,7 +60,7 @@ To train the base model, run:
 python3 training.py
 ```
 
-The trained base model will be stored under `checkpoints/ace_*` with current timestamp at running under the name `base_model.pth`. 
+The trained base model will be stored under `checkpoints/ace_*` with current timestamp at running under the name `base_model.pth`. One could optionally also train our model with curriculum learning technique by passing `--curriculum` flag.
 
 
 ### Evaluation
@@ -79,6 +79,8 @@ For fine-tuning, we used 20 trajectories (with 80/20 split for training vs. vali
 ## Results
 
 Following, we report our results on all datasets across time snapshots. In each single figure, the solution evolves from the identical initial condition $u(x, 0)$, but with different $\epsilon$ parameter value used. We also report the error percentage, comparing results from fine-tuned model and our base model.
+
+These results are obtained from default training technique taking into account of all input data types at once, without curriculum update.
 
 ### `test_sol.npy`
 
