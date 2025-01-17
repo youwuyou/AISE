@@ -1,14 +1,14 @@
 """
 Training the mini-foundation model for Allen-Cahn equation (ACE) dataset
     - datasets shall be generated already via running data_generator.py
-    - we use curriculum training with all I.C. types, varying epsilon values
+    - one can optionally use curriculum training with all I.C. types, varying epsilon values
         - anti-curriculum with decreasing difficulty shows nice training pattern, but bad results on testing data
-        - in-curriculum order shows good results
-    - batch sizes vary as we gradually increase the sample amount during training
-        - we pre-selected some batch sizes that shall be used for different range of training sample sizes
+        - If used, batch sizes vary as we gradually increase the sample amount during training
+            - we pre-selected some batch sizes that shall be used for different range of training sample sizes
+        - we did not use it in the final report because results are biased
 
 After training:
-    - the model is stored under the checkpoints/ directory
+    - the model is stored under the `checkpoints/` directory
     - training config is available for history tracking
     - training history can be plotted with plot() function in this script
 
@@ -24,6 +24,7 @@ from typing import Optional
 from model import AllenCahnFNO
 import math
 
+import argparse
 import json
 from pathlib import Path
 
@@ -35,13 +36,16 @@ print_bold
 )
 
 class AllenCahnDataset(Dataset):
-    def __init__(self, which, data, epsilon_values, time_points, training_quotient=0.9, fewshot_num=10, ic_types = None):
+    def __init__(self, which, data, epsilon_values, time_points, training_quotient=0.9, fewshot_num=10, ic_types = None, normalize=False):
         """
         data: dictionary mapping ic_types to epsilon values 
             - then each epsilon value is mapped to numpy arrays of shape (n_samples, n_timesteps, n_points)
         epsilon_values: list of epsilon values
         time_points: numpy array of time points
         """
+        if normalize:
+            data = self.normalize_data(data)
+
         self.data = data
         self.epsilon_values = epsilon_values
         self.time_points = time_points
@@ -49,7 +53,6 @@ class AllenCahnDataset(Dataset):
             self.ic_types = list(data.keys())
         else:
             self.ic_types = ic_types
-        print(f"data {self.ic_types}")
         
         # Create index mapping
         self.indices = []
@@ -74,9 +77,7 @@ class AllenCahnDataset(Dataset):
 
                 # Extend indices with tuples of (epsilon, sample_index) for the specified range
                 self.indices.extend([(ic_type, eps, i) for i in range(start_idx, end_idx)])
-
         self.traj_total = len(list(self.indices))
-        print(f"Total number of {which} data across {len(self.time_points)} timepoints: {self.traj_total}")
     
     def __len__(self):
         return len(self.indices)
@@ -100,11 +101,30 @@ class AllenCahnDataset(Dataset):
             'times': torch.FloatTensor(self.time_points[1:])
         }
 
+    def normalize_data(self, data):
+        # Gather all data for mean/std
+        all_data = []
+        for ic_type in data:
+            for eps in data[ic_type]:
+                all_data.append(data[ic_type][eps])  # shape: (n_samples, n_timesteps, n_points)
+
+        # Compute global mean and std
+        stacked = np.concatenate(all_data, axis=0).reshape(-1, all_data[0].shape[-1])
+        mean = stacked.mean(axis=0, keepdims=True)
+        std = stacked.std(axis=0, keepdims=True)
+
+        # Normalize
+        for ic_type in data:
+            for eps in data[ic_type]:
+                data[ic_type][eps] = (data[ic_type][eps] - mean) / (std + 1e-8)
+        return data
+
 def get_loss_func(name: str):
     """
     Define custom loss function(s) for training
-    TODO: Consider:
-    - L2 loss on predictions
+    - In our model we fetch squared L2 loss (MSE) on predictions
+
+    Potential Improvements:
     - Physical constraints (energy, boundaries)
     - Gradient-based penalties
     """
@@ -115,7 +135,6 @@ def get_loss_func(name: str):
         loss_fun = nn.MSELoss()
     elif name == "cross_entropy":
         loss_fun = nn.CrossEntropyLoss()
-
     return loss_fun
 
 def get_optimizer(model, learning_rate, warmup=True, warmup_steps=None):
@@ -123,7 +142,7 @@ def get_optimizer(model, learning_rate, warmup=True, warmup_steps=None):
     Configure optimizer and learning rate schedule
     Considering learning rate schedule for curriculum
     """
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-6)
     
     if warmup:
         # Create a warmup scheduler that will be chained with ReduceLROnPlateau
@@ -167,98 +186,82 @@ def train_model(model,
                 epochs=100, 
                 device='cuda',
                 learning_rate=1e-3,
-                patience = 10,
+                patience=10,
                 curriculum_steps=None):
-    """
-    Training loop with curriculum learning on epsilon values.
-    
-    curriculum_steps: list of (epoch, epsilon_subset) tuples defining when to introduce each epsilon value
-    """
-    train_dataset = AllenCahnDataset("training", train_data_dict, epsilon_values, time_points)
-    val_dataset   = AllenCahnDataset("validation",train_data_dict, epsilon_values, time_points)
+
+    train_dataset = AllenCahnDataset("training", train_data_dict, epsilon_values, time_points, normalize=False)
+    val_dataset   = AllenCahnDataset("validation",train_data_dict, epsilon_values, time_points, normalize=False)
 
     total = train_dataset.traj_total
     if total < 1000:
         batch_size = 32
-    elif total >= 1000 and total < 3000:
+    elif total < 3000:
         batch_size = 64
-    elif total >= 3000 and total < 6000:
+    elif total < 6000:
         batch_size = 128
-    elif total >= 6000:
+    else:
         batch_size = 512
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
-    
-    # Optimizer with curriculum adjustment
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size)
+
     initial_lr = learning_rate
-    min_lr = 1e-5     # Minimum learning rate
+    min_lr     = 1e-5
+
+    warmup_steps = len(curriculum_steps) if curriculum_steps else 0
     optimizer, warmup_scheduler = get_optimizer(
-        model, 
+        model,
         learning_rate=initial_lr,
-        warmup=True,
-        warmup_steps=len(curriculum_steps)
+        warmup=(warmup_steps > 0),
+        warmup_steps=warmup_steps
     )
-    # Use ReduceLROnPlateau with a higher patience for curriculum stages
+    
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='min',
-        factor=0.5,        # Reduce LR by half when plateauing
-        patience=patience,
-        min_lr=min_lr
+        optimizer, mode='min', factor=0.5, patience=patience, min_lr=min_lr
     )
-   
+    
     model = model.to(device)
     best_val_loss = float('inf')
     l = get_loss_func("mse")
 
     training_history = {
-        'train_loss': [],
-        'val_loss': [],
-        'best_epoch': 0,
-        'best_val_loss': float('inf')
+        'train_loss': [], 'val_loss': [], 'best_epoch': 0, 'best_val_loss': float('inf')
     }
 
     for epoch in range(epochs):
-        # Update curriculum if needed
         if curriculum_steps:
             for step_epoch, eps_subset in curriculum_steps:
                 if epoch == step_epoch:
-                    # Load dataset of current curriculum
-                    train_dataset = AllenCahnDataset("training", train_data_dict, eps_subset, time_points)
-                    val_dataset   = AllenCahnDataset("validation",train_data_dict, eps_subset, time_points)
+                    train_dataset = AllenCahnDataset("training", train_data_dict, eps_subset, time_points, normalize=False)
+                    val_dataset   = AllenCahnDataset("validation",train_data_dict, eps_subset, time_points, normalize=False)
 
-                    # Adjust learning rate based on curriculum stage
                     current_lr = optimizer.param_groups[0]['lr']
-                    new_lr = max(current_lr * 0.7, min_lr)  # Reduce by 30% each stage
+                    new_lr = max(current_lr * 0.7, min_lr)
                     for param_group in optimizer.param_groups:
                         param_group['lr'] = new_lr
                     
                     print(f"Adjusting learning rate to {new_lr} for epsilon values {eps_subset}")
 
-                    # gradually increase number of batch
                     total = train_dataset.traj_total
                     if total < 1000:
                         batch_size = 32
-                    elif total >= 1000 and total < 3000:
+                    elif total < 3000:
                         batch_size = 64
-                    elif total >= 3000 and total < 6000:
+                    elif total < 6000:
                         batch_size = 128
-                    elif total >= 6000:
+                    else:
                         batch_size = 512
+
                     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-                    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+                    val_loader   = DataLoader(val_dataset,   batch_size=batch_size)
                     print(f"Curriculum update: now training on epsilon values {eps_subset} with batch size {batch_size}")
         
-        # Training
         model.train()
         train_loss = 0
         for batch in train_loader:
-            # Move batch to device
             batch = {k: v.to(device) for k, v in batch.items()}
             train_loss += train_step(model, batch, optimizer, l)
         
-        # Validation
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -267,13 +270,12 @@ def train_model(model,
                 val_loss += validation_step(model, batch, l)
 
         train_loss /= len(train_loader)
-        val_loss /= len(val_loader)
+        val_loss   /= len(val_loader)
         training_history['train_loss'].append(train_loss)
-        training_history['val_loss'].append(val_loss)       
+        training_history['val_loss'].append(val_loss)
         print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_loss={val_loss:.6f}")
 
-        # Apply warmup schedule if in warmup phase
-        if warmup_scheduler and epoch < len(curriculum_steps):
+        if warmup_scheduler and epoch < warmup_steps:
             warmup_scheduler.step()
 
         scheduler.step(val_loss)
@@ -292,14 +294,13 @@ def train_model(model,
         full_config = {'training_config': config}
     
     full_config['training_history'] = training_history
-    
     with open(checkpoint_dir / 'training_config.json', 'w') as f:
         json.dump(full_config, f, indent=4)
 
     return model
 
 
-def main():
+def main(curriculum: bool):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -313,12 +314,11 @@ def main():
     # Model initialization
     #==================================================
     model_config = {
-        "modes": 16,
+        "modes": 20,
         "width": 64,
-        "depth": 4,
+        "depth": 2,
         "device": device
     }
-
     model = AllenCahnFNO(**{k: v for k, v in model_config.items()})
 
     #==================================================
@@ -338,25 +338,29 @@ def main():
 
     # Set and store training config
     epochs = 800
-    epoch_with_all = int(epochs * 0.8)
-    print(f"specified epoch index at which we enforce training with all epsilon values {epoch_with_all}")
     device = device
     learning_rate = 1e-4
     patience = 50
 
     # Generate curriculum step by even splitting
-    curriculum_steps: list[tuple] = []
-    covered_eps = []
-    num_eps = len(epsilon_values)
-    base_epoch = epoch_with_all // num_eps
-    print(f"Total number of epsilon values for training: {num_eps}")
-    print(f"base_epoch to introduce new epsilon value: {base_epoch}")
+    if curriculum is True:
+        curriculum_steps: list[tuple] = []
+        covered_eps = []
+        num_eps = len(epsilon_values)
+        epoch_with_all = int(epochs * 0.5)
+        print(f"specified epoch index at which we enforce training with all epsilon values {epoch_with_all}")
 
-    # Curriculum training
-    for idx, eps in enumerate(epsilon_values):
-        covered_eps.append(eps)
-        t = (idx * base_epoch, covered_eps.copy())
-        curriculum_steps.append(t)
+        base_epoch = epoch_with_all // num_eps
+        print(f"Total number of epsilon values for training: {num_eps}")
+        print(f"base_epoch to introduce new epsilon value: {base_epoch}")
+
+        # Curriculum training
+        for idx, eps in enumerate(epsilon_values):
+            covered_eps.append(eps)
+            t = (idx * base_epoch, covered_eps.copy())
+            curriculum_steps.append(t)
+    else:
+        curriculum_steps = None
     print(f"curriculum_steps {curriculum_steps}")
 
     training_config = {
@@ -404,5 +408,12 @@ def plot():
     plot_training_history(ace_fno_folders[-1])
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--curriculum", action="store_true")
+    args = parser.parse_args()
+
+    # Run the main training module
+    main(curriculum=args.curriculum)
+
+    # Plot training history under checkpoints/
     plot()
