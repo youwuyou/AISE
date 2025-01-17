@@ -50,9 +50,7 @@ def evaluate(model, data_loader, device: str = "cuda") -> dict:
             else:
                 total_loss += np.linalg.norm(u_pred_np[:, t] - ut_np[:, t], 2) / norm
                 count += 1
-    
-    print(f"final count: {count}, total_loss {total_loss}")
-    return total_loss / count
+        return total_loss / count
 
 
 def count_parameters(model, details = False):
@@ -93,8 +91,8 @@ def fine_tune(model, dataset, dataset_name="test_sol", checkpoint_dir="checkpoin
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Freeze parameters based on their names
-    freeze_film = True
-    freeze_fno  = False
+    freeze_film = False
+    freeze_fno  = True
     for name, param in model.named_parameters():
         if 'input_layer' in name:
             param.requires_grad = False
@@ -120,12 +118,12 @@ def fine_tune(model, dataset, dataset_name="test_sol", checkpoint_dir="checkpoin
     # Only optimize parameters that require gradients
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=1e-4
+        lr=1e-2
     )
 
     loss_fn = get_loss_func("mse")
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, 'min', factor=0.5, patience=3, min_lr=1e-5
+        optimizer, 'min', factor=0.5, patience=3, min_lr=1e-4
     )
     model = model.to(device)
     best_val_loss = float('inf')
@@ -378,7 +376,7 @@ def main():
                                   device=device,
                                   normalize=False)
         table_data = []
-        headers = ["IC Type", "ε", "Zero-shot", "Fine-tuned", "Improvement"]
+        headers = ["IC Type", "ε", "Zero-shot", "Fine-tuned"]
         
         for ic_type, res in res_dict.items():
             # Add a header row for each IC type
@@ -388,8 +386,7 @@ def main():
                     "",
                     f"{eps:.3f}",
                     f"{eps_res['zero-shot'] * 100:.4f}%",
-                    f"{eps_res['fine-tuned'] * 100:.4f}%",
-                    f"{(1 - eps_res['fine-tuned']/eps_res['zero-shot'])*100:.4f}%"
+                    f"{eps_res['fine-tuned'] * 100:.4f}%"
                 ])
         
         print(f"\nResults Summary for {name}:")
