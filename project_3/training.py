@@ -88,8 +88,8 @@ class AllenCahnDataset(Dataset):
         1. 'initial': tensor of length 128 (u(x, 0))
         2. 'target': 4x128 tensor showing decay patterns
             - use target[i] to access u(x, t = iΔt)
-        3. 'epsilon': single value tensor [10.0]
-        4. 'times': 4 timesteps [0.0025, 0.0050, 0.0075, 0.0100]  
+        3. 'epsilon': single value tensor [ɛ]
+        4. 'times': 4 timesteps [1Δt, 2Δt, 3Δt, 4Δt]
         """
         ic_type, eps, sample_idx = self.indices[idx]
         trajectory = self.data[ic_type][eps][sample_idx]
@@ -331,7 +331,7 @@ def main(curriculum: bool):
     with open(f'{data_folder}/config.json', 'r') as f:
         config = json.load(f)
 
-    # Extract parameters from config        
+    # Extract parameters from config
     time_points = np.array(config['temporal_grid']['time_points'])
     epsilon_values = config['dataset_params']['epsilon_values']
     added_epsilon_values = config['dataset_params']['added_epsilon_values']
