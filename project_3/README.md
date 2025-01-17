@@ -84,21 +84,21 @@ Following, we report our results on all datasets across time snapshots. In each 
 
 | Piecewise Linear (PL) | Gaussian Mixture (GM) | Fourier Series (FS) |
 | --- | --- | --- |
-| ![pl](results/test_sol_ic_FS_combined.png)   | ![gm](results/test_sol_ic_GM_combined.png)     | ![fs](results/test_sol_ic_FS_combined.png)     |
+| ![pl](results/test_sol_ic_PL_combined.png)   | ![gm](results/test_sol_ic_GM_combined.png)     | ![fs](results/test_sol_ic_FS_combined.png)     |
 
 
 ### `test_sol_OOD.npy`
 
 | Piecewise Linear (PL) | Gaussian Mixture (GM) | Fourier Series (FS) |
 | --- | --- | --- |
-| ![pl](results/test_sol_OOD_ic_FS_combined.png)   | ![gm](results/test_sol_OOD_ic_GM_combined.png)     | ![fs](results/test_sol_OOD_ic_FS_combined.png)     |
+| ![pl](results/test_sol_OOD_ic_PL_combined.png)   | ![gm](results/test_sol_OOD_ic_GM_combined.png)     | ![fs](results/test_sol_OOD_ic_FS_combined.png)     |
 
 
 ### `test_sol_eps.npy`
 
 | Piecewise Linear (PL) | Gaussian Mixture (GM) | Fourier Series (FS) |
 | --- | --- | --- |
-| ![pl](results/test_sol_eps_ic_FS_combined.png)   | ![gm](results/test_sol_eps_ic_GM_combined.png)     | ![fs](results/test_sol_eps_ic_FS_combined.png)     |
+| ![pl](results/test_sol_eps_ic_PL_combined.png)   | ![gm](results/test_sol_eps_ic_GM_combined.png)     | ![fs](results/test_sol_eps_ic_FS_combined.png)     |
 
 
 [^1]: **Towards Foundation Models for Scientific Machine Learning: Characterizing Scaling and Transfer Behavior**
