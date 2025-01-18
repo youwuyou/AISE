@@ -176,7 +176,7 @@ def main(create_gif=False):
 
         print(f"Relative L2 error {error * 100}% ")
 
-    # Generate animations for both U and V
+    # Generate animations for both U and V (original data)
     if create_gif:
         print("\nProcessing U variable...")
         plot_2d_heatmap_anim(U, T, X, Y, "u", results_dir)

@@ -201,7 +201,7 @@ def main(system=1):
     )
 
     # Plot 
-    snapshot = u.shape[1] // 3  # Choose a specific time snapshot, e.g., 1/4th of the total time
+    snapshot = u.shape[1] // 3  # Choose a specific time snapshot, e.g., 1/3th of the total time
     if system == 1:
         # For u_t = - u*u_x + 0.1*u_xx
         # compare results we got
