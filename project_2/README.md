@@ -85,7 +85,7 @@ we found the following equation for system 1:
 
 $$u_t = -0.997335 \cdot u u_\mathbf{x} + 0.099140 \cdot u_\mathbf{x x} $$
 
-With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE and got the relative L2 error is at around 3.30%.
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE and got the relative L2 error is at around 3.140%.
 
 
 ### System 2 (FNN + automatic differentiation)
@@ -105,10 +105,10 @@ with 13 candidate terms,
 we found the following equation for system 2:
 
 $$
-u_\mathbf{t} = -5.964103 \cdot u u_\mathbf{x} -0.987782 \cdot u_\mathbf{xxx}
+u_\mathbf{t} = -5.964117 \cdot u u_\mathbf{x} -0.987785 \cdot u_\mathbf{xxx}
 $$
 
-With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE, which is around 4.34%.
+With these coefficients, we compute the error between the LHS and the RHS and obtained for the first found PDE, which is around 4.389%.
 
 ### System 3 (Direct `torch.gradient`)
 
