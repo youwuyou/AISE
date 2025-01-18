@@ -93,8 +93,7 @@ def plot_pde_comparison(X,
                         rhs_terms, 
                         snapshot, 
                         results_dir, 
-                        title=None,
-                        system="1"):
+                        title=None):
     """
     Plot PDE terms comparison and residual in separate subplots.
     Also calculates and reports the relative L2 error between LHS and RHS.
@@ -193,9 +192,9 @@ def plot_pde_comparison(X,
     # Set overall title
     if title is None:
         if rhs_terms:
-            title = f'System {system}: ${lhs_label} = {rhs_label}$'
+            title = f'${lhs_label} = {rhs_label}$'
         else:
-            title = f'\n${lhs_label} = 0$'
+            title = f'${lhs_label} = 0$'
     fig.suptitle(title, fontsize=16, y=0.95, weight='bold')
     
     # Save and close

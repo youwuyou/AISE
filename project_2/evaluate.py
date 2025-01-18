@@ -211,8 +211,7 @@ def main(system=1):
             lhs_terms=[('u_t', 1.0)],
             rhs_terms=[('u*u_x', -0.997335), ('u_xx', 0.099140)],
             snapshot=snapshot,
-            results_dir=results_dir,
-            system=system
+            results_dir=results_dir
         )
     else:
         # For u_t = - 6*u*u_x - u_xxx
@@ -223,8 +222,7 @@ def main(system=1):
             lhs_terms=[('u_t', 1.0)],
             rhs_terms=[('u*u_x', -5.964117), ('u_xxx', -0.987785)],  # Empty list since everything is on LHS
             snapshot=snapshot,
-            results_dir=results_dir,
-            system=system
+            results_dir=results_dir
         )
 
 if __name__ == "__main__":
