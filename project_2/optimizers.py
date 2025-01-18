@@ -82,7 +82,7 @@ def TrainSTRidge(ϴ, Ut, λ, d_tol, maxiter=25, STR_iters=10, η=1e-3,
     Ut_train, Ut_test = Ut[train, :], Ut[test, :]
 
     # Set an appropriate l⁰-penalty
-    η = η * np.linalg.cond(ϴ_train)
+    η = η * generalized_condition_number(ϴ_train)
 
     # Get a baseline predictor
     ξ_best   = np.linalg.lstsq(ϴ_train, Ut_train, rcond=None)[0]
