@@ -20,7 +20,6 @@ from itertools import product
 def build_theta(u, derivatives):
     n = u.shape[0]  # Number of spatial points
     m = u.shape[1]  # Number of time steps
-    print(f"Domain shape is ({u.shape}), consists of n = {n} spatial points and m = {m} time snapshots")
     print(f"n ྾ m = {n * m}")
 
     D = len(derivatives)  # Number of candidates

@@ -66,7 +66,6 @@ def main(system=1):
     print(f"Testing on dataset loaded from {path}")
     data = np.load(path)
 
-    # Shape: (256, 101)
     u = data['u']        
     x = data['x']
     t = data['t']
@@ -74,7 +73,7 @@ def main(system=1):
     # Data preprocessing
     # Prepare meshgrid
     if x.ndim == 1 and t.ndim == 1:
-        X, T = np.meshgrid(x, t, indexing='ij')  # Shape: (256, 101)
+        X, T = np.meshgrid(x, t, indexing='ij')
     else:
         X, T = x, t  # Assuming x and t are already meshgridded
 
