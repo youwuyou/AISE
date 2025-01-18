@@ -2,11 +2,13 @@
 
 This project aims to use the PDE-Find method [^1] for symbolic regression of the governing equation of PDEs. The PDE-Find method is an extension of the SINDy method [^2] and it uses sparse regression to solve a linear system of equations (LSE) that contains the coefficients of the relevant terms of the governing equation as the unknown.
 
+This `README.md` serves only as a brief overview on how to run our code. For more details, please see the [📄 project 2 report](report.pdf).
+
 ## Getting Started
 
 In project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
-However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled PDE system, we simply perform second-order accurate central differences method with first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.
+However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled system, we simply perform second-order accurate central differences method with first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.
 
 ## 1D Implementation (FNN + automatic differentiation)
 

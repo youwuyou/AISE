@@ -123,10 +123,6 @@ def main(create_gif=False):
     u_t = torch.gradient(u, spacing=[dt], dim=2)[0]
     v_t = torch.gradient(v, spacing=[dt], dim=2)[0]
 
-    c_theta = generalized_condition_number(Theta.cpu().detach().numpy())
-    print(f"condition number of Theta is {c_theta}")
-    print(f"shape of u_t is {u_t.shape}")
-
     # Sample only certain rows of Theta and u_t, v_t
     torch.manual_seed(0)
     num_samples = 10000
@@ -135,6 +131,10 @@ def main(create_gif=False):
     Theta = Theta[indices]
     u_t = u_t.flatten()[indices]
     v_t = v_t.flatten()[indices]
+
+    c_theta = generalized_condition_number(Theta.cpu().detach().numpy())
+    print(f"condition number of Theta is {c_theta}")
+    print(f"shape of u_t is {u_t.shape}")
 
     #==================================================
     # Sparse regression for LSE
@@ -166,7 +166,7 @@ def main(create_gif=False):
             STR_iters=STR_iters,
             η=η,
             split=split,
-            print_best_tol=False
+            print_best_tol=True
         )
         # After running ridge regression:
         print_discovered_equation(candidates, ξ_best, f_symbol=symbol)
