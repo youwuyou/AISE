@@ -171,11 +171,7 @@ def main(system=1):
         print_best_tol=True
     )
     # After running ridge regression:
-    print_discovered_equation(candidates, ξ_best)
-
-    # Print error
-    error = np.linalg.norm(u_t_np - Theta_np @ ξ_best, 2) / np.linalg.norm(u_t_np, 2)
-    print(f"Relative L2 error {error * 100}% ")
+    print_discovered_equation(candidates, ξ_best, f_symbol="u_t")
 
     #==================================================
     # Prepare data for plotting
@@ -185,7 +181,7 @@ def main(system=1):
 
     # Add u and u_t
     functions['u'] = u
-    functions['u_t'] = u_t.detach().cpu().numpy().reshape(u.shape)
+    functions['u_t'] = u_t_np.reshape(u.shape)
 
     # Add all derivatives
     for key, value in derivatives.items():
@@ -205,26 +201,30 @@ def main(system=1):
     )
 
     # Plot 
-    snapshot = u.shape[1] // 5  # Choose a specific time snapshot, e.g., 1/4th of the total time
+    snapshot = u.shape[1] // 3  # Choose a specific time snapshot, e.g., 1/4th of the total time
     if system == 1:
-        # For u_t + u*u_x = 0.1*u_xx
+        # For u_t = - u*u_x + 0.1*u_xx
+        # compare results we got
         plot_pde_comparison(
             X=X,
             functions=functions,
-            lhs_terms=[('u_t', 1), ('u*u_x', 1)],
-            rhs_terms=[('u_xx', 0.1)],
+            lhs_terms=[('u_t', 1.0)],
+            rhs_terms=[('u*u_x', -0.997335), ('u_xx', 0.099140)],
             snapshot=snapshot,
-            results_dir=results_dir
+            results_dir=results_dir,
+            system=system
         )
     else:
-        # For u_t + 6*u*u_x = - u_xxx
+        # For u_t = - 6*u*u_x - u_xxx
+        # compare results we got
         plot_pde_comparison(
             X=X,
             functions=functions,
-            lhs_terms=[('u_t', 1), ('u*u_x', 6)],
-            rhs_terms=[('u_xxx', -1)],  # Empty list since everything is on LHS
+            lhs_terms=[('u_t', 1.0)],
+            rhs_terms=[('u*u_x', -5.964117), ('u_xxx', -0.987785)],  # Empty list since everything is on LHS
             snapshot=snapshot,
-            results_dir=results_dir
+            results_dir=results_dir,
+            system=system
         )
 
 if __name__ == "__main__":

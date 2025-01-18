@@ -42,10 +42,10 @@ def main(system=1):
     # Load and prepare dataset
     if system == 1:
         path = 'data/1.npz'
-        name = "Burgers' Equation"
+        name = "System 1"
     else:
         path = 'data/2.npz'
-        name = "KdV Equation"
+        name = "System 2"
 
     print(f"Testing on dataset loaded from {path}")
     data = np.load(path)

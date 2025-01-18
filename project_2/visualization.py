@@ -87,7 +87,14 @@ def format_term(term, coeff):
     
     return f"{coeff_str}{term}"
 
-def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_dir, title=None):
+def plot_pde_comparison(X, 
+                        functions, 
+                        lhs_terms, 
+                        rhs_terms, 
+                        snapshot, 
+                        results_dir, 
+                        title=None,
+                        system="1"):
     """
     Plot PDE terms comparison and residual in separate subplots.
     Also calculates and reports the relative L2 error between LHS and RHS.
@@ -114,8 +121,6 @@ def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_di
     float
         Relative L2 error between LHS and RHS as a percentage
     """    
-    import numpy as np
-    import matplotlib.pyplot as plt
     
     # Calculate individual terms
     all_terms = lhs_terms + rhs_terms
@@ -138,10 +143,11 @@ def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_di
     residual = lhs - rhs
     
     # Calculate relative L2 error
-    l2_norm_residual = np.sqrt(np.mean(residual[:, snapshot]**2))
-    l2_norm_lhs = np.sqrt(np.mean(lhs[:, snapshot]**2))
+    l2_norm_residual = np.linalg.norm(lhs - rhs, 2)
+    l2_norm_lhs =  np.linalg.norm(lhs, 2)
     relative_l2_error = (l2_norm_residual / l2_norm_lhs) * 100  # as percentage
-    
+    print(f"Relative L2 error {relative_l2_error}% ")
+
     # Create figure with subplots
     n_terms = len(all_terms)
     fig = plt.figure(figsize=(15, 10))
@@ -170,7 +176,7 @@ def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_di
     
     ax2.plot(X[:, snapshot], lhs[:, snapshot], 
              label=f'LHS: ${lhs_label}$', color='darkblue')
-    ax2.set_title(f'LHS vs RHS (Relative L2 Error: {relative_l2_error:.2f}%)')
+    ax2.set_title(f'LHS vs RHS (Relative L2 Error: {relative_l2_error:.3f}%)')
     ax2.set_xlabel('x')
     ax2.set_ylabel('Value')
     ax2.grid(True)
@@ -187,10 +193,10 @@ def plot_pde_comparison(X, functions, lhs_terms, rhs_terms, snapshot, results_di
     # Set overall title
     if title is None:
         if rhs_terms:
-            title = f'${lhs_label} = {rhs_label}$'
+            title = f'System {system}: ${lhs_label} = {rhs_label}$'
         else:
-            title = f'${lhs_label} = 0$'
-    fig.suptitle(title, fontsize=14, y=0.95)
+            title = f'\n${lhs_label} = 0$'
+    fig.suptitle(title, fontsize=16, y=0.95, weight='bold')
     
     # Save and close
     plt.savefig(f'{results_dir}/check_sol.png', bbox_inches='tight')
