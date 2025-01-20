@@ -63,10 +63,14 @@ def main(system=1):
         path = 'data/2.npz'
         name = "KdV Equation"
 
-    print(f"Testing on dataset loaded from {path}")
-    data = np.load(path)
+    try:
+        print(f"Testing on dataset loaded from {path}")
+        data = np.load(path)
+    except FileNotFoundError:
+        print(f"File not found: {path}, please ensure to download the zipped file `systems.zip` with datasets from here https://polybox.ethz.ch/index.php/f/3927719498, unzip it and ensure `data/X.npz` exist.")
+        raise SystemExit
 
-    u = data['u']        
+    u = data['u']
     x = data['x']
     t = data['t']
 

@@ -67,8 +67,12 @@ def main(create_gif=False):
     results_dir = f"results/system_{system}"
     os.makedirs(results_dir, exist_ok=True)
 
-    print(f"Testing on dataset loaded from {path}")
-    vectorial_data = np.load(path)
+    try:
+        print(f"Testing on dataset loaded from {path}")
+        vectorial_data = np.load(path)
+    except FileNotFoundError:
+        print(f"File not found: {path}, please ensure to download the zipped file `systems.zip` with datasets from here https://polybox.ethz.ch/index.php/f/3927719498, unzip it and ensure `data/X.npz` exist.")
+        raise SystemExit
 
     # Load the arrays from the file
     U = vectorial_data['u']
