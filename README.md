@@ -76,8 +76,9 @@ pip install -r requirements.txt
 
 - Original project handouts locates under the `assets/` directory
 - Each project `X ∈ {1, 2, 3}` contains:
-    - For each task, we reported our results using maximal two pages
-    - Visualizations and results can be found in the `results/` directory
+    - For each task, we reported our results in a section of the main report here <td><a href="report.pdf"><img src="assets/pdf_icon.png" alt="Download Report" width="20"/></a></td>.
+    - Trained models are stored under corresponding folder of `checkpoints/`
+    - Visualizations, prediction files (redirection of I/O) from running evaluation scripts can be found in the `results/` directory
 
 
 For the project report, experiments were conducted on the `piora` cluster from the student cluster competition team RACKlette @ ETHZ using the hardware & software configuration as follows:
