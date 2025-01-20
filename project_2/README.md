@@ -7,9 +7,9 @@ This `README.md` serves only as a brief overview on how to run our code. For mor
 ## Getting Started
 
 > [!NOTE]
-> - The prediction file `prediction_1.txt` is the redirection of the I/O by running `python3 evaluate.py --system=1 > prediction_1.txt`.
-> - The prediction file `prediction_2.txt` is the redirection of the I/O by running `python3 evaluate.py --system=2 > prediction_2.txt`.
-> - The prediction file `prediction_3.txt` is the redirection of the I/O by running `python3 evaluate_2d.py > prediction_3.txt`.
+> - The prediction file [`results/prediction_1.txt`](results/prediction_1.txt) is the redirection of the I/O by running `python3 evaluate.py --system=1 > results/prediction_1.txt`.
+> - The prediction file [`results/prediction_2.txt`](results/prediction_2.txt) is the redirection of the I/O by running `python3 evaluate.py --system=2 > results/prediction_2.txt`.
+> - The prediction file [`results/prediction_3.txt`](results/prediction_3.txt) is the redirection of the I/O by running `python3 evaluate_2d.py > results/prediction_3.txt`.
 
 In project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
