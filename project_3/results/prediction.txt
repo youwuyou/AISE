@@ -1,0 +1,120 @@
+Using device: cuda
+Loaded Custom FNO from: checkpoints/ace_fno_m20_w64_d2_20250116_215544
+Loading dataset from data/dt_0.0025_20250116_190700
+
+[1mFine-tuned model for test_sol found[0m
+
+[1mRetrieving results for I.C. type: PL[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+[1mRetrieving results for I.C. type: FS[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+[1mRetrieving results for I.C. type: GM[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+Results Summary for test_sol:
+IC Type        ε    Zero-shot    Fine-tuned
+---------  -----  -----------  ------------
+PL
+           0.100     10.1411%      10.0359%
+           0.050      8.1278%       8.0712%
+           0.010      5.0139%       5.2801%
+FS
+           0.100     26.8162%      26.7704%
+           0.050     27.4113%      27.3574%
+           0.010     16.3927%      16.0335%
+GM
+           0.100      3.9864%       3.7835%
+           0.050      6.4224%       6.3270%
+           0.010      2.8208%       2.7567%
+
+[1mFine-tuned model for test_sol_OOD found[0m
+
+[1mRetrieving results for I.C. type: PL[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+[1mRetrieving results for I.C. type: FS[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+[1mRetrieving results for I.C. type: GM[0m
+Testing for ɛ=0.1 over 200 trajectories
+Testing for ɛ=0.05 over 200 trajectories
+Testing for ɛ=0.01 over 200 trajectories
+
+Results Summary for test_sol_OOD:
+IC Type        ε    Zero-shot    Fine-tuned
+---------  -----  -----------  ------------
+PL
+           0.100     16.5216%      16.3927%
+           0.050     13.1615%      13.4098%
+           0.010      3.6672%       4.2901%
+FS
+           0.100     87.3301%      83.1482%
+           0.050     47.4966%      45.9286%
+           0.010     28.0266%      27.0400%
+GM
+           0.100      3.7367%       4.7908%
+           0.050      4.9008%       5.1821%
+           0.010      2.0659%       2.5415%
+
+[1mFine-tuned model for test_sol_eps found[0m
+
+[1mRetrieving results for I.C. type: PL[0m
+Testing for ɛ=10.0 over 200 trajectories
+Testing for ɛ=0.5 over 200 trajectories
+Testing for ɛ=0.075 over 200 trajectories
+Testing for ɛ=0.025 over 200 trajectories
+Testing for ɛ=0.008 over 200 trajectories
+Testing for ɛ=0.006 over 200 trajectories
+
+[1mRetrieving results for I.C. type: FS[0m
+Testing for ɛ=10.0 over 200 trajectories
+Testing for ɛ=0.5 over 200 trajectories
+Testing for ɛ=0.075 over 200 trajectories
+Testing for ɛ=0.025 over 200 trajectories
+Testing for ɛ=0.008 over 200 trajectories
+Testing for ɛ=0.006 over 200 trajectories
+
+[1mRetrieving results for I.C. type: GM[0m
+Testing for ɛ=10.0 over 200 trajectories
+Testing for ɛ=0.5 over 200 trajectories
+Testing for ɛ=0.075 over 200 trajectories
+Testing for ɛ=0.025 over 200 trajectories
+Testing for ɛ=0.008 over 200 trajectories
+Testing for ɛ=0.006 over 200 trajectories
+
+Results Summary for test_sol_eps:
+IC Type         ε    Zero-shot    Fine-tuned
+---------  ------  -----------  ------------
+PL
+           10.000   9409.0869%      64.7127%
+            0.500    233.5755%      26.3383%
+            0.075      9.6927%      15.7740%
+            0.025      5.7023%       7.0492%
+            0.008      3.4510%       5.6850%
+            0.006      3.8525%       5.7232%
+FS
+           10.000  30882.6602%      61.9866%
+            0.500   1394.6853%      53.6279%
+            0.075     34.1827%      54.2362%
+            0.025     25.8429%      31.3667%
+            0.008     32.3054%      30.9287%
+            0.006     30.1576%      28.5304%
+GM
+           10.000  12466.9521%      14.3580%
+            0.500    310.5461%      15.3666%
+            0.075      6.4313%      13.3130%
+            0.025      5.9716%       7.6806%
+            0.008      2.9431%       6.3092%
+            0.006      3.3061%       6.2021%

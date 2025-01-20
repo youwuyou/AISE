@@ -12,6 +12,9 @@ This `README.md` serves only as a brief overview on how to run our code. For mor
 
 ## Getting Started
 
+> [!NOTE]
+> - The prediction file [`results/prediction.txt`](results/prediction.txt) is the redirection of the I/O by running `python3 evaluate.py > results/prediction.txt`.
+
 ### Data Generation
 
 For data generation, we need to first generate initial conditions (IC) $u_{0}= u(x, 0)$, and then solve the system with `scipy.integrate.solve_ivp`. To generate various types of initial conditions, we implemented three different samplers of the `FunctionSampler` class that provides three types of IC:
