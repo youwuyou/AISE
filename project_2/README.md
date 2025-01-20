@@ -7,7 +7,7 @@ This `README.md` serves only as a brief overview on how to run our code. For mor
 ## Getting Started
 
 > [!WARNING]
-> Please make sure to unzip the source datasets `{X}.npz` for `X ∈ {1, 2, 3}` before performing predictions.
+> Please make sure to unzip the source datasets by moving to the data folder with `cd data/`, and then perform `unzip systems.zip` to obtain the data files `{X}.npz` for `X ∈ {1, 2, 3}` before performing predictions.
 
 > [!NOTE]
 > - The prediction file [`results/prediction_1.txt`](results/prediction_1.txt) is the redirection of the I/O by running `python3 evaluate.py --system=1 > results/prediction_1.txt`.
