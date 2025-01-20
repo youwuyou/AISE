@@ -12,7 +12,7 @@ For more details, please see the project 1 section of the main project report, w
 ## Getting Started
 
 > [!NOTE]
-> The prediction file `prediction.txt` is the redirection of the I/O by running `python3 evaluate.py > prediction.txt`.
+> The prediction file [results/prediction.txt](results/prediction.txt) is the redirection of the I/O by running `python3 evaluate.py > results/prediction.txt`.
 
 ### Evaluation
 
