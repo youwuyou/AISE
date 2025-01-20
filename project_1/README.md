@@ -11,6 +11,9 @@ For more details, please see the project 1 section of the main project report, w
 
 ## Getting Started
 
+> [!NOTE]
+> The prediction file `prediction.txt` is the redirection of the I/O by running `python3 evaluate.py > prediction.txt`.
+
 ### Evaluation
 
 For the evaluation of task 1 - 3, we consider a model that is independent of time. It is trained by setting `time_dependent = False` and resides under the `checkpoints/onetoone` folder.

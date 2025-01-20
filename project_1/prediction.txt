@@ -1,0 +1,115 @@
+Loading Custom FNO from: checkpoints/onetoone/fno_m30_w16_d2_lr0.001_20250102_145624
+Plotting training history...
+
+[1mTask 1: Evaluating FNO model from One-to-One training on standard test set...[0m
+Resolution: 128
+Average Relative L2 Error Over 128 Testing Trajectories (resolution 4):
+Custom FNO: 5.21%
+
+[1mTask 2: Testing on different resolutions:[0m
+Resolution: 32
+Average Relative L2 Error Over 128 Testing Trajectories (resolution 4):
+Custom FNO: 20.07%
+--------------------------------------------------
+Resolution: 64
+Average Relative L2 Error Over 128 Testing Trajectories (resolution 4):
+Custom FNO: 4.99%
+--------------------------------------------------
+Resolution: 96
+Average Relative L2 Error Over 128 Testing Trajectories (resolution 4):
+Custom FNO: 5.92%
+--------------------------------------------------
+Resolution: 128
+Average Relative L2 Error Over 128 Testing Trajectories (resolution 4):
+Custom FNO: 6.39%
+--------------------------------------------------
+
+[1mTask 3: Testing on OOD dataset:[0m
+In-Distribution - Average Relative L2 Error Over 128 Testing Trajectories:
+Custom FNO: 5.21%
+--------------------------------------------------
+Out-of-Distribution - Average Relative L2 Error Over 128 Testing Trajectories:
+Custom FNO: 9.77%
+
+[1mLoading FNO (onetoall) from: checkpoints/onetoall/fno_m30_w32_d2_lr0.001_20250102_151601[0m
+
+[1m1. Direct Evaluation[0m
+FNO Evaluation (t=1.0)  Error: 7.74%
+
+[1m2. Autoregressive Evaluation (t=1.0):[0m
+
+Autoregressive Results:
+Timesteps            Error %   
+-------------------------
+1+1+1+1              128.45%
+1+1+2                116.08%
+1+2+1                109.51%
+2+1+1                105.47%
+2+2                  105.26%
+1+3                  75.56%
+3+1                  63.19%
+4                    7.74%
+
+[1mLoading FNO (all2all) from: checkpoints/all2all/fno_m30_w32_d2_lr0.001_20250102_152429[0m
+
+[1m1. Direct Evaluation[0m
+FNO Evaluation (t=1.0)  Error: 8.20%
+
+[1m2. Autoregressive Evaluation (t=1.0):[0m
+
+Autoregressive Results:
+Timesteps            Error %   
+-------------------------
+1+1+1+1              78.45%
+1+1+2                61.26%
+1+2+1                62.60%
+2+1+1                67.04%
+2+2                  54.56%
+1+3                  65.89%
+3+1                  57.04%
+4                    8.20%
+
+[1mBonus Task: Evaluate All2All Training Across Time:[0m
+
+[1mUsing FNO (onetoall)[0m
+
+[1mIn-distribution Data Results Across Time:[0m
+End time: t = 0.25
+Average Relative L2 Error: 3.91%
+--------------------------------------------------
+End time: t = 0.5
+Average Relative L2 Error: 5.46%
+--------------------------------------------------
+End time: t = 0.75
+Average Relative L2 Error: 6.25%
+--------------------------------------------------
+End time: t = 1.0
+Average Relative L2 Error: 7.74%
+--------------------------------------------------
+
+[1mOOD Data Results at t = 1.0:[0m
+Resolution: torch.Size([128, 64]), torch.Size([128, 64])
+Average Relative L2 Error: 13.02%
+
+
+[1mUsing FNO (all2all)[0m
+
+[1mIn-distribution Data Results Across Time:[0m
+End time: t = 0.25
+Average Relative L2 Error: 1.96%
+--------------------------------------------------
+End time: t = 0.5
+Average Relative L2 Error: 3.68%
+--------------------------------------------------
+End time: t = 0.75
+Average Relative L2 Error: 6.24%
+--------------------------------------------------
+End time: t = 1.0
+Average Relative L2 Error: 8.20%
+--------------------------------------------------
+
+[1mOOD Data Results at t = 1.0:[0m
+Resolution: torch.Size([128, 64]), torch.Size([128, 64])
+Average Relative L2 Error: 14.16%
+
+All plots have been saved in the results directory.
