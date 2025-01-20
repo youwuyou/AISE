@@ -1,0 +1,23 @@
+Testing on dataset loaded from data/3.npz
+(256, 256) 2D spatial points, 201 time nt in total
+candidates ['u', 'u_x', 'u_y', 'u_xx', 'u_yy', 'u_xy', 'u**4', 'u**3', 'u**2', 'v', 'v_x', 'v_y', 'v_xx', 'v_yy', 'v_xy', 'v**4', 'v**3', 'v**2', 'u*v', 'u*v**2', 'u**2*v', 'u*v**3', 'u**3*v']
+23 candidates are used, we built Theta matrix of shape torch.Size([13172736, 23])
+condition number of Theta is 101.93910217285156
+shape of u_t is torch.Size([10000])
+shape of Theta_np is (10000, 23)
+shape of u_t_np is (10000, 1)
+shape of v_t_np is (10000, 1)
+Optimal tolerance: 0.09778455284552849
+
+Discovered equation:
+u_t = 0.978845*u + 0.099731*u_xx + 0.139817*u_yy + -0.952589*u**3 + 0.993481*v**3 + -0.955152*u*v**2 + 0.992257*u**2*v
+
+Relative L2 error 11.80157470703125% 
+Optimal tolerance: 0.10688034188034178
+
+Discovered equation:
+v_t = -0.987519*u**3 + 1.175099*v + 0.106914*v_xx + 0.152016*v_yy + -1.159284*v**3 + -0.999191*u*v**2 + -1.160521*u**2*v
+
+Relative L2 error 12.238569259643555% 
+
+All results saved in results/system_3

@@ -1,0 +1,17 @@
+Using device: cuda
+Activation function set to GELU
+Loading FNN that approximates system 2 from: checkpoints/system_2/pde_sol_w64_lr0.001_20250110_130846
+Testing on dataset loaded from data/2.npz
+13 candidates: ['1', 'u', 'u*u_t', 'u*u_tt', 'u*u_x', 'u*u_xx', 'u*u_xxx', 'u_t*u_x', 'u_tt', 'u_tt*u_xx', 'u_x', 'u_xx', 'u_xxx']
+n ྾ m = 102912
+13 candidates will be used for assembling matrix Theta
+Shape of Theta: torch.Size([102912, 13])
+condition number of Theta is 3415.815185546875
+shape of Theta_np is (102912, 13)
+shape of u_t_np is (102912, 1)
+Optimal tolerance: 0.5000000000000002
+
+Discovered equation:
+u_t = -5.964117*u*u_x + -0.987785*u_xxx
+
+Relative L2 error 4.389070987701416% 

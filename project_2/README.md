@@ -6,6 +6,11 @@ This `README.md` serves only as a brief overview on how to run our code. For mor
 
 ## Getting Started
 
+> [!NOTE]
+> - The prediction file `prediction_1.txt` is the redirection of the I/O by running `python3 evaluate.py --system=1 > prediction_1.txt`.
+> - The prediction file `prediction_2.txt` is the redirection of the I/O by running `python3 evaluate.py --system=2 > prediction_2.txt`.
+> - The prediction file `prediction_3.txt` is the redirection of the I/O by running `python3 evaluate_2d.py > prediction_3.txt`.
+
 In project 2, we initially wanted to train simple feedforward neural networks (FNNs) on all three provided datasets, and then we can use the trained FNN to approximate the dataset better and then perform automatic differentiation to compute derivatives.
 
 However, due to the high training cost, we only used *FNN + automatic differentiation* for the first two systems. For the third coupled system, we simply perform second-order accurate central differences method with first order estimates at the boundaries via [`torch.gradient`](https://pytorch.org/docs/stable/generated/torch.gradient.html) directly on the dataset.

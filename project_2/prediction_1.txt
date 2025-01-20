@@ -1,0 +1,17 @@
+Using device: cuda
+Activation function set to Tanh
+Loading FNN that approximates system 1 from: checkpoints/system_1/pde_sol_w64_lr0.001_20250110_130307
+Testing on dataset loaded from data/1.npz
+31 candidates: ['1', 'u', 'u**2', 'u**2*u_x', 'u**2*u_x**2', 'u**2*u_x**3', 'u**2*u_xx', 'u**2*u_xx**2', 'u**2*u_xx**3', 'u**3', 'u**3*u_x', 'u**3*u_x**2', 'u**3*u_x**3', 'u**3*u_xx', 'u**3*u_xx**2', 'u**3*u_xx**3', 'u*u_x', 'u*u_x**2', 'u*u_x**3', 'u*u_xx', 'u*u_xx**2', 'u*u_xx**3', 'u_x', 'u_x**2', 'u_x**3', 'u_xx', 'u_xx**2', 'u_xx**3', 'u_xxx', 'u_xxx**2', 'u_xxx**3']
+n ྾ m = 25856
+31 candidates will be used for assembling matrix Theta
+Shape of Theta: torch.Size([25856, 31])
+condition number of Theta is 653973.8125
+shape of Theta_np is (25856, 31)
+shape of u_t_np is (25856, 1)
+Optimal tolerance: 0.07971428571428593
+
+Discovered equation:
+u_t = -0.997335*u*u_x + 0.099140*u_xx
+
+Relative L2 error 3.140075445175171% 
