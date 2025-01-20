@@ -2,7 +2,7 @@
 
 This project aims to use the PDE-Find method [^1] for symbolic regression of the governing equation of PDEs. The PDE-Find method is an extension of the SINDy method [^2] and it uses sparse regression to solve a linear system of equations (LSE) that contains the coefficients of the relevant terms of the governing equation as the unknown.
 
-This `README.md` serves only as a brief overview on how to run our code. For more details, please see the [📄 project 2 report](report.pdf).
+This `README.md` serves only as a brief overview on how to run our code. For more details, please see the project 2 section of the main project report.
 
 ## Getting Started
 

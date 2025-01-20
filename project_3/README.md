@@ -8,7 +8,7 @@ $$
 \frac{\partial u}{\partial t} = \Delta_{x} u - \frac{1}{\epsilon^{2}} (u^{3} - u), x\in [-1,1]
 $$
 
-This `README.md` serves only as a brief overview on how to run our code. For more details, please see the [📄 project 3 report](report.pdf), where we explained the selection of our model architecture and capabilities & limitations of our model.
+This `README.md` serves only as a brief overview on how to run our code. For more details, please see the project 3 section of the main project report, where we explained the selection of our model architecture and capabilities & limitations of our model. We also provided a proof for the error estimate of Allen-Cahn equation, which was a bonus task for the project.
 
 ## Getting Started
 
